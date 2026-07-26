@@ -1,7 +1,3 @@
-Ecco il README aggiornato. Ho integrato l'alberatura a sottomoduli, il passaggio all'interfaccia `Textual`, l'aggiunta del `ConnectivityService` per l'healthcheck, e il nuovo sistema di installazione/esecuzione tramite `pyproject.toml`.
-
----
-
 # raspyCode
 
 Agente locale a microservizi (asyncio + event bus) per bioinformatica, con
