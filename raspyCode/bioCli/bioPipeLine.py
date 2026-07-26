@@ -12,8 +12,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rich.console import Console
-from rich.layout import Layout
-from rich.live import Live
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.rule import Rule

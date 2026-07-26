@@ -2,7 +2,6 @@
 
 import argparse
 import os
-import sys
 from typing import NamedTuple, List, TextIO, Optional
  
 _DNA_TO_RNA = str.maketrans('TtUu', 'UuTt')   # module-level: compilato una volta
