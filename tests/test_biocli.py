@@ -1,5 +1,3 @@
-import pytest
-from io import StringIO
 from raspyCode.bioCli.sequence.gcContent import gc_percent
 from raspyCode.bioCli.sequence.revComp import reverse_complement
 from raspyCode.bioCli.sequence.hammDist import hamming
