@@ -1,9 +1,5 @@
 """
 ToolExecutorService: esegue il tool-calling locale.
-Mappa i nomi dei tool esposti al LLM sugli script reali dell'albero bioCli
-(sibling di questo modulo dentro il pacchetto: vedi BIOTOOLKIT_ROOT) e li
-invoca come sottoprocessi Python, restituendo stdout/stderr come risultato.
-system_run_cmd e' limitato a un allow-list di binari innocui.
 """
 import asyncio
 import os
@@ -12,13 +8,10 @@ import shlex
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-from .event_bus import EventBus
-from .events import LLMToolCallEvent, StatusEvent, ToolResultEvent
+from ..core.event_bus import EventBus
+from ..core.events import LLMToolCallEvent, StatusEvent, ToolResultEvent
 
-# bioCli/ vive dentro il pacchetto installato (src/raspyCode/bioCli), sibling
-# di questo file: Path(__file__).parent la trova sempre, indipendentemente
-# da dove il pacchetto viene installato (repo locale, pip --user, pipx...).
-_DEFAULT_BIOTOOLKIT_ROOT = Path(__file__).resolve().parent / "bioCli"
+_DEFAULT_BIOTOOLKIT_ROOT = Path(__file__).resolve().parent.parent / "bioCli"
 BIOTOOLKIT_ROOT = Path(os.environ.get("BIOTOOLKIT_ROOT", str(_DEFAULT_BIOTOOLKIT_ROOT)))
 
 BIOTOOLKIT_SCRIPTS: Dict[str, str] = {
@@ -46,7 +39,6 @@ BIOTOOLKIT_SCRIPTS: Dict[str, str] = {
 SYSTEM_CMD_ALLOWLIST = {
     "ls", "cat", "df", "free", "uname", "whoami", "pwd", "head", "tail", "wc",
 }
-
 
 class ToolExecutorService:
     def __init__(self, bus: EventBus) -> None:

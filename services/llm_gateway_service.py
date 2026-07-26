@@ -1,20 +1,14 @@
 """
 LLMGatewayService: client verso Ollama (endpoint /api/chat) sul Raspberry Pi.
-Il modello NON ha piu' un default hardcoded: se l'utente non ne ha scelto
-uno dalle impostazioni (o via RASPY_MODEL), un messaggio utente produce uno
-StatusEvent che lo dice esplicitamente invece di tentare comunque la
-richiesta. Reagisce a ModelSelectedEvent e PiConfigEvent per aggiornare
-modello e routing a runtime.
 """
 import asyncio
 import json
 import uuid
 from typing import Any, Dict, List, Optional
-
 import httpx
 
-from .event_bus import EventBus
-from .events import (
+from ..core.event_bus import EventBus
+from ..core.events import (
     AssistantTokenEvent,
     LLMToolCallEvent,
     ModelSelectedEvent,
@@ -87,7 +81,6 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
         },
     },
 ]
-
 
 class LLMGatewayService:
     def __init__(

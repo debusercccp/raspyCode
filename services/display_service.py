@@ -9,8 +9,8 @@ il resto dell'agente.
 """
 from pathlib import Path
 
-from .event_bus import EventBus
-from .events import Event, LLMToolCallEvent, StatusEvent, ToolResultEvent
+from ..core.event_bus import EventBus
+from ..core.events import Event, LLMToolCallEvent, StatusEvent, ToolResultEvent
 
 FB_PATH = "/dev/fb1"
 FB_WIDTH = 480
