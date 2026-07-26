@@ -49,6 +49,12 @@ async def main() -> None:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
 
+def start() -> None:
+    """Entrypoint sincrono per l'eseguibile generato da pyproject.toml."""
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
 
 if __name__ == "__main__":
     try:

@@ -1,0 +1,9 @@
+textual>=0.80.0
+httpx>=0.24.0
+rich>=13.0.0
+biopython>=1.80
+pandas>=2.0.0
+
+[tft]
+numpy>=1.24.0
+pillow>=9.5.0
