@@ -1,16 +1,24 @@
-"""
-RaspyCodeApp: interfaccia full-screen (stile opencode) basata su Textual.
-"""
+"""RaspyCodeApp: interfaccia full-screen basata su Textual."""
 from __future__ import annotations
 
 import asyncio
-from typing import List, Optional
+import contextlib
+from typing import ClassVar
 
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, RichLog, Static
+from textual.widgets import (
+    Footer,
+    Header,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    RichLog,
+    Static,
+)
 
 from ..core.event_bus import EventBus
 from ..core.events import (
@@ -31,9 +39,10 @@ USER_IDENTITY = "noya"
 class SettingsScreen(ModalScreen[None]):
     """Impostazioni: routing (IP del Raspberry Pi) e scelta del modello."""
 
-    BINDINGS = [("escape", "dismiss", "Chiudi")]
+    # Correzione RUF012: tipizzazione esplicita ClassVar
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss", "Chiudi")]
 
-    def __init__(self, current_pi_ip: str, current_model: Optional[str], models: List[str]) -> None:
+    def __init__(self, current_pi_ip: str, current_model: str | None, models: list[str]) -> None:
         super().__init__()
         self._current_pi_ip = current_pi_ip
         self._current_model = current_model
@@ -97,18 +106,19 @@ class RaspyCodeApp(App):
     }
     """
 
-    BINDINGS = [
+    # Correzione RUF012: tipizzazione esplicita ClassVar
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("ctrl+s", "open_settings", "Impostazioni"),
         ("ctrl+q", "quit_app", "Esci"),
     ]
 
     hw_mode: reactive[str] = reactive("rilevamento...")
     pi_connected: reactive[bool] = reactive(False)
-    current_model: reactive[Optional[str]] = reactive(None)
+    current_model: reactive[str | None] = reactive(None)
     pi_ip: reactive[str] = reactive("10.42.0.2")
-    available_models: reactive[List[str]] = reactive(list)
+    available_models: reactive[list[str]] = reactive(list)
 
-    def __init__(self, bus: EventBus, pi_ip: str, model: Optional[str]) -> None:
+    def __init__(self, bus: EventBus, pi_ip: str, model: str | None) -> None:
         super().__init__()
         self._bus = bus
         self._queue = bus.subscribe()
@@ -143,15 +153,14 @@ class RaspyCodeApp(App):
         )
 
     def _refresh_status(self) -> None:
-        try:
+        # Correzione S110: contextlib.suppress al posto di try-except-pass
+        with contextlib.suppress(Exception):
             self.query_one("#status-bar", Static).update(self._status_text())
-        except Exception:
-            pass
 
     def watch_pi_connected(self, _value: bool) -> None:
         self._refresh_status()
 
-    def watch_current_model(self, _value: Optional[str]) -> None:
+    def watch_current_model(self, _value: str | None) -> None:
         self._refresh_status()
 
     def watch_pi_ip(self, _value: str) -> None:

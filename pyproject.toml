@@ -58,3 +58,6 @@ omit = [
     "raspyCode/services/connectivity_service.py",
     "raspyCode/services/llm_gateway_service.py"
 ]
+
+[tool.ruff.lint]
+ignore = ["N999", "BLE001"]

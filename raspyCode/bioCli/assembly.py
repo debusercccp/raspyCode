@@ -33,7 +33,8 @@ def genome_assembly(kmers: list[str]) -> str:
     """Esegue un assemblaggio greedy primario basato sulle sovrapposizioni dei k-mer."""
     if not kmers:
         return ""
-    kmers = sorted(list(set(kmers)))
+    # Corretto: rimosso il list() superfluo dentro sorted()
+    kmers = sorted(set(kmers))
     overlap_graph = kmers[0]
     for kmer in kmers[1:]:
         for i in range(len(kmer), 0, -1):
