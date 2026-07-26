@@ -1,7 +1,7 @@
-from raspyCode.bioCli.sequence.gcContent import gc_percent
-from raspyCode.bioCli.sequence.revComp import reverse_complement
-from raspyCode.bioCli.sequence.hammDist import hamming
 from raspyCode.bioCli.sequence.dnaToRna import _DNA_TO_RNA
+from raspyCode.bioCli.sequence.gcContent import gc_percent
+from raspyCode.bioCli.sequence.hammDist import hamming
+from raspyCode.bioCli.sequence.revComp import reverse_complement
 
 def test_gc_content_logic():
     assert gc_percent("ATGC") == 50.0
