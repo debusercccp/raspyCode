@@ -1,17 +1,17 @@
 """ToolExecutorService: esegue il tool-calling locale via chiamate a funzioni pure."""
-
 import asyncio
 import random
 import shlex
 from typing import Any
 
+from .. import bioCli
 from ..core.event_bus import EventBus
 from ..core.events import LLMToolCallEvent, StatusEvent, ToolResultEvent
-from .. import bioCli
 
 SYSTEM_CMD_ALLOWLIST = {
     "ls", "cat", "df", "free", "uname", "whoami", "pwd", "head", "tail", "wc",
 }
+
 
 class ToolExecutorService:
     def __init__(self, bus: EventBus) -> None:
@@ -34,7 +34,6 @@ class ToolExecutorService:
         args = event.arguments.get("args", [])
 
         try:
-            # Mapping diretto sulle funzioni bioCli senza processi esterni
             if event.tool_name == "biotoolkit_gc_content":
                 output = f"Contenuto GC: {bioCli.gc_content(args[0] if args else '')}%"
             elif event.tool_name == "biotoolkit_rev_comp":

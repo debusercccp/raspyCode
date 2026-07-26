@@ -1,7 +1,6 @@
-"""
-ConnectivityService: healthcheck periodico verso Ollama sul Raspberry Pi.
-"""
+"""ConnectivityService: healthcheck periodico verso Ollama sul Raspberry Pi."""
 import asyncio
+
 import httpx
 
 from ..core.event_bus import EventBus
@@ -9,6 +8,7 @@ from ..core.events import ConnectionStatusEvent, ModelListEvent, PiConfigEvent
 
 CHECK_INTERVAL_SECONDS = 5.0
 TIMEOUT_SECONDS = 2.0
+
 
 class ConnectivityService:
     def __init__(self, bus: EventBus, pi_ip: str) -> None:

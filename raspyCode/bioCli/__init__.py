@@ -1,28 +1,35 @@
 """Inizializzazione del pacchetto bioCli: esposizione delle funzioni pure."""
 
-from .sequence import gc_content, rev_comp, dna_to_rna, rna_to_prot, base_count, hamming_dist
-from .assembly import orf_finder, how_many_seq, longest_shared_seq, genome_assembly
-from .search import motif_find, n_glyc_motif, restriction_site, grep_fastx
-from .io_utils import seq_magic, fastx_sampler, blast_output
+from .assembly import genome_assembly, how_many_seq, longest_shared_seq, orf_finder
+from .io_utils import blast_output, fastx_sampler, seq_magic
+from .search import grep_fastx, motif_find, n_glyc_motif, restriction_site
+from .sequence import (
+    base_count,
+    dna_to_rna,
+    gc_content,
+    hamming_dist,
+    rev_comp,
+    rna_to_prot,
+)
 from .synthesis import synth_seq
 
 __all__ = [
-    "gc_content",
-    "rev_comp",
-    "dna_to_rna",
-    "rna_to_prot",
     "base_count",
+    "blast_output",
+    "dna_to_rna",
+    "fastx_sampler",
+    "gc_content",
+    "genome_assembly",
+    "grep_fastx",
     "hamming_dist",
-    "orf_finder",
     "how_many_seq",
     "longest_shared_seq",
-    "genome_assembly",
     "motif_find",
     "n_glyc_motif",
+    "orf_finder",
     "restriction_site",
-    "grep_fastx",
+    "rev_comp",
+    "rna_to_prot",
     "seq_magic",
-    "fastx_sampler",
-    "blast_output",
     "synth_seq",
 ]

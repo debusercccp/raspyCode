@@ -1,9 +1,9 @@
-"""
-Eventi che transitano sull'EventBus di raspyCode.
+"""Eventi che transitano sull'EventBus di raspyCode.
+
 Ogni microservizio pubblica/consuma un sottoinsieme di questi tipi.
 """
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any
 
 
 @dataclass
@@ -28,7 +28,7 @@ class AssistantTokenEvent(Event):
 class LLMToolCallEvent(Event):
     call_id: str
     tool_name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
 
 
 @dataclass
@@ -56,7 +56,7 @@ class ConnectionStatusEvent(Event):
 @dataclass
 class ModelListEvent(Event):
     """Modelli disponibili sul Pi, letti da /api/tags durante l'healthcheck."""
-    models: List[str] = field(default_factory=list)
+    models: list[str] = field(default_factory=list)
 
 
 @dataclass

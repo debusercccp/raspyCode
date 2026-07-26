@@ -1,5 +1,5 @@
-"""
-Entry point di raspyCode.
+"""Entry point di raspyCode.
+
 Istanzia l'EventBus e i microservizi, rileva l'hardware, ed esegue
 l'interfaccia Textual in foreground e i servizi in background.
 """
@@ -8,10 +8,10 @@ import os
 
 from .core.event_bus import EventBus
 from .core.events import StatusEvent
+from .services.connectivity_service import ConnectivityService
 from .services.hardware import HardwareDetectionService
 from .services.llm_gateway_service import LLMGatewayService
 from .services.tool_executor_service import ToolExecutorService
-from .services.connectivity_service import ConnectivityService
 from .ui.frontend_service import RaspyCodeApp
 
 try:
@@ -49,6 +49,7 @@ async def main() -> None:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
 
+
 def start() -> None:
     """Entrypoint sincrono per l'eseguibile generato da pyproject.toml."""
     try:
@@ -56,8 +57,6 @@ def start() -> None:
     except KeyboardInterrupt:
         pass
 
+
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    start()

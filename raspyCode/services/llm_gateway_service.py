@@ -1,10 +1,9 @@
-"""
-LLMGatewayService: client verso Ollama (endpoint /api/chat) sul Raspberry Pi.
-"""
+"""LLMGatewayService: client verso Ollama (endpoint /api/chat) sul Raspberry Pi."""
 import asyncio
 import json
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import httpx
 
 from ..core.event_bus import EventBus
@@ -35,7 +34,7 @@ _BIOTOOLKIT_TOOL_NAMES = [
     "biotoolkit_pipeline",
 ]
 
-TOOL_SCHEMAS: List[Dict[str, Any]] = [
+TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
@@ -82,20 +81,21 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
 ]
 
+
 class LLMGatewayService:
     def __init__(
         self,
         bus: EventBus,
         pi_ip: str = "10.42.0.2",
-        model: Optional[str] = None,
+        model: str | None = None,
     ) -> None:
         self._bus = bus
         self._queue = bus.subscribe()
         self.pi_ip = pi_ip
         self.base_url = f"http://{pi_ip}:11434"
-        self.model: Optional[str] = model
-        self.history: List[Dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
-        self._pending_tool_calls: Dict[str, "asyncio.Future[ToolResultEvent]"] = {}
+        self.model: str | None = model
+        self.history: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self._pending_tool_calls: dict[str, asyncio.Future[ToolResultEvent]] = {}
         self._client = httpx.AsyncClient(timeout=None)
 
     async def run(self) -> None:
@@ -146,7 +146,7 @@ class LLMGatewayService:
                 "stream": True,
             }
             assistant_content = ""
-            tool_calls: List[Dict[str, Any]] = []
+            tool_calls: list[dict[str, Any]] = []
 
             try:
                 async with self._client.stream(
@@ -191,7 +191,7 @@ class LLMGatewayService:
                 if isinstance(args, str):
                     args = json.loads(args or "{}")
 
-                fut: "asyncio.Future[ToolResultEvent]" = asyncio.get_running_loop().create_future()
+                fut: asyncio.Future[ToolResultEvent] = asyncio.get_running_loop().create_future()
                 self._pending_tool_calls[call_id] = fut
 
                 await self._bus.publish(
