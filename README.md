@@ -19,7 +19,7 @@ Il pacchetto è organizzato a microservizi (Domain-Driven), tutti collegati a un
 | --- | --- | --- |
 | `RaspyCodeApp` | `ui/frontend_service.py` | TUI `Textual` full-screen: input utente, log, status bar e UI impostazioni |
 | `LLMGatewayService` | `services/llm_gateway_service.py` | Client Ollama (`/api/chat`, streaming + tool-calling) |
-| `ToolExecutorService` | `services/tool_executor_service.py` | Esegue gli script `bioCli/` e `system_run_cmd` (allow-list) |
+| `ToolExecutorService` | `services/tool_executor_service.py` | Chiama le funzioni pure di `bioCli/` (in-process) e `system_run_cmd` (subprocess, allow-list) |
 | `ConnectivityService` | `services/connectivity_service.py` | Healthcheck periodico verso Ollama (`/api/tags`) e fetch modelli disponibili |
 | `TFTDisplayService` | `services/display_service.py` | Rendering di stato su `/dev/fb1` (ILI9486 480x320), auto-disabilitante |
 | `HardwareDetectionService` | `services/hardware.py` | Rileva ROCm / CUDA / CPU-only all'avvio |
@@ -29,7 +29,7 @@ Il pacchetto è organizzato a microservizi (Domain-Driven), tutti collegati a un
 
 ```text
 .
-├── pyproject.toml              <- Configurazione per installazione locale
+├── pyproject.toml              <- Configurazione di packaging (usata anche da pipx)
 ├── README.md
 ├── requirements.txt
 ├── cleanCache.sh
@@ -47,49 +47,87 @@ Il pacchetto è organizzato a microservizi (Domain-Driven), tutti collegati a un
     │   └── tool_executor_service.py
     ├── ui/                     <- Interfaccia utente Textual
     │   └── frontend_service.py
-    └── bioCli/                 <- Script bioinformatica (subprocess)
-        ├── sequence/
-        ├── assembly/
-        ├── search/
-        ├── io/
-        ├── synthesis/
-        └── bioPipeLine.py
+    └── bioCli/                 <- Funzioni pure di bioinformatica, importate in-process
+        ├── __init__.py         <- Espone tutte le funzioni (gc_content, rev_comp, ...)
+        ├── sequence.py
+        ├── assembly.py
+        ├── search.py
+        ├── io_utils.py
+        └── synthesis.py
 
 ```
 
-`bioCli/` è incluso nel namespace ma trattato come script standalone: `ToolExecutorService` calcola
-il suo path in automatico con `Path(__file__).resolve().parent.parent / "bioCli"`,
-quindi funziona a prescindere da dove il pacchetto viene clonato. Per puntare a
-un'altra posizione, sovrascrivi con la variabile d'ambiente `BIOTOOLKIT_ROOT`.
+`bioCli/` è un sottopacchetto vero e proprio: `ToolExecutorService` importa
+direttamente `raspyCode.bioCli` e chiama le sue funzioni pure (nessun subprocess,
+nessun path da risolvere a runtime). L'unico tool eseguito come processo esterno
+resta `system_run_cmd`, limitato all'allow-list descritta più sotto.
 
 ## Requisiti e Installazione
 
 * Python 3.11+ (testato su 3.13)
 * Ollama in esecuzione sul Raspberry Pi, raggiungibile su `10.42.0.2:11434` (modificabile a runtime da UI)
 * Solo sul Raspberry Pi con TFT collegato: `Pillow` e `numpy` (installabili tramite extra `[tft]`), utente nei gruppi `spi,gpio,video`
+* [`pipx`](https://pipx.pypa.io/) per l'installazione system-wide (consigliato — vedi sotto)
 
-Grazie al `pyproject.toml`, il progetto si installa in modalità editabile, rendendolo accessibile globalmente nel virtual environment senza conflitti di `PYTHONPATH`:
+### Installazione con pipx (consigliata)
+
+`pipx` installa `raspycode` in un venv isolato e dedicato, ma espone il comando
+`raspycode` globalmente sul `PATH`: niente più `source .venv/bin/activate`
+prima di ogni avvio.
+
+```bash
+# dalla root del repo (dove sta pyproject.toml)
+pipx install .
+
+# variante Raspberry Pi con TFT collegato (dipendenze Pillow/numpy incluse)
+pipx install ".[tft]"
+```
+
+Se `pipx` non è ancora sul `PATH` della shell:
+
+```bash
+pipx ensurepath
+# poi riapri il terminale (o: source ~/.bashrc / ~/.zshrc)
+```
+
+Da qui in poi, da **qualsiasi directory** e senza attivare nulla:
+
+```bash
+raspycode
+```
+
+**Aggiornare dopo un `git pull`:**
+
+```bash
+pipx install --force .
+```
+
+**Disinstallare:**
+
+```bash
+pipx uninstall raspyCode
+```
+
+**Modalità sviluppo** (il comando `raspycode` punta ai file sorgente, le modifiche
+sono effettive subito senza reinstallare):
+
+```bash
+pipx install --editable .
+```
+
+### Alternativa: venv manuale
+
+Se preferisci non usare pipx (es. per un ambiente di sviluppo con altri tool):
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Installazione base (Laptop)
 pip install -e .
-
-# Installazione con dipendenze opzionali per il display (Raspberry Pi)
+# oppure, sul Raspberry Pi:
 pip install -e ".[tft]"
-
 ```
 
 ## Esecuzione
-
-L'installazione crea automaticamente un alias eseguibile nel tuo ambiente. Puoi lanciare l'agente da **qualsiasi directory**:
-
-```bash
-raspycode
-
-```
 
 Comandi principali da dentro la TUI:
 
@@ -102,21 +140,18 @@ Comandi principali da dentro la TUI:
 | --- | --- | --- |
 | `RASPY_PI_IP` | `10.42.0.2` | IP di default per il routing verso Ollama (sovrascrivibile da UI) |
 | `RASPY_MODEL` | `None` | Modello di avvio (se assente, la TUI ti inviterà a selezionarlo con `Ctrl+S`) |
-| `BIOTOOLKIT_ROOT` | `<raspyCode>/bioCli` | Path assoluto della cartella script bioinformatica |
 
-Esempio di avvio pre-configurato:
+Con `pipx`, le variabili d'ambiente si passano normalmente prima del comando:
 
 ```bash
 RASPY_PI_IP=10.42.0.2 RASPY_MODEL=qwen3:4b raspycode
-
 ```
 
 ## Tool disponibili al modello
 
-Ogni script in `bioCli/` è esposto come tool `biotoolkit_<nome>` che accetta
-`args: list[str]` (passati così come sono come argomenti CLI allo script).
-Il mapping completo nome-tool -> script è in
-`tool_executor_service.BIOTOOLKIT_SCRIPTS`.
+Ogni funzione di `bioCli/` è esposta al modello come tool `biotoolkit_<nome>`
+(es. `biotoolkit_gc_content`, `biotoolkit_rev_comp`, `biotoolkit_dna_to_rna`, ...),
+chiamata direttamente in-process da `ToolExecutorService._execute`.
 
 In più:
 
@@ -128,12 +163,11 @@ in `tool_executor_service.SYSTEM_CMD_ALLOWLIST`. Estendere solo con binari
 read-only: dare shell libera a un LLM resta un vettore di rischio anche
 in un agente locale.
 
-## Pulizia **pycache**
+## Pulizia __pycache__
 
 ```bash
 ./cleanCache.sh               # pulisce a partire dalla cwd
 ./cleanCache.sh /altro/path   # oppure specifica un path
-
 ```
 
 Rimuove ricorsivamente tutte le cartelle `__pycache__` e i `.pyc` orfani.
@@ -157,5 +191,4 @@ dtoverlay=tft35a:rotate=90
 
 ```bash
 sudo usermod -a -G spi,gpio,video noya
-
 ```

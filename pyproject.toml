@@ -47,7 +47,11 @@ testpaths = ["tests"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["raspyCode", "raspyCode.*"]
-exclude = ["raspyCode.bioCli*"] # Evita che gli script CLI standalone vengano trattati come sotto-pacchetti di libreria
+# bioCli e' un sottopacchetto vero (funzioni pure importate in-process da
+# ToolExecutorService), quindi deve restare incluso: niente exclude qui.
+# (In precedenza bioCli era un albero di script CLI standalone eseguiti via
+# subprocess, da cui l'esclusione storica — non piu' valida col refactor
+# a funzioni pure.)
 
 [tool.coverage.run]
 source = ["raspyCode"]
