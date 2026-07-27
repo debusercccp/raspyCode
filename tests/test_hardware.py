@@ -4,6 +4,7 @@ import pytest
 
 from raspyCode.services.hardware import HardwareDetectionService
 
+
 @pytest.mark.asyncio
 async def test_hardware_detect_amd_rocm():
     # Simula il successo di rocm-smi e il fallimento del resto
