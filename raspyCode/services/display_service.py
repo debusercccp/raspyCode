@@ -22,7 +22,6 @@ _LEVEL_STYLE = {
     "error": ((60, 10, 10), (255, 80, 80)),
 }
 
-
 class TFTDisplayService:
     def __init__(self, bus: EventBus) -> None:
         self._queue = bus.subscribe()

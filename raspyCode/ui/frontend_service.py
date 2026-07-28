@@ -6,11 +6,10 @@ import contextlib
 from typing import ClassVar
 
 from textual.app import App, ComposeResult
-from textual.containers import Vertical
+from textual.containers import Vertical, Center
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import (
-    Footer,
     Header,
     Input,
     Label,
@@ -19,6 +18,7 @@ from textual.widgets import (
     RichLog,
     Static,
 )
+from raspyCode.ui.banner import RASPY_BANNER
 
 from ..core.event_bus import EventBus
 from ..core.events import (
@@ -39,7 +39,6 @@ USER_IDENTITY = "noya"
 class SettingsScreen(ModalScreen[None]):
     """Impostazioni: routing (IP del Raspberry Pi) e scelta del modello."""
 
-    # Correzione RUF012: tipizzazione esplicita ClassVar
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss", "Chiudi")]
 
     def __init__(self, current_pi_ip: str, current_model: str | None, models: list[str]) -> None:
@@ -86,27 +85,59 @@ class RaspyCodeApp(App):
     """App full-screen: chat a tutto schermo + status bar + impostazioni."""
 
     CSS = """
-    RichLog#chat-log {
+    /* Centra l'intero layout verticalmente */
+    Screen {
+        align: center middle;
+        scrollbar-size: 0 0;
+        }
+
+    #main-container {
+        align: center middle;
+        width: 100%;
         height: 1fr;
-        border: round $accent;
-        padding: 0 1;
     }
-    #status-bar {
-        height: 1;
-        background: $panel;
-        color: $text;
-        padding: 0 1;
-    }
-    #settings-box {
-        width: 64;
+
+    /* Container per centrare il blocco unico */
+    #splash-container {
+        width: 100%;
         height: auto;
-        border: thick $accent;
-        background: $surface;
-        padding: 1 2;
+        margin-bottom: 2;
+        align: center middle;
+    }
+
+    /* Stile per il blocco ASCII unificato */
+    #opencode-logo {
+        width: auto;
+        text-align: left; /* Mantiene la forma dell'ASCII */
+        color: #888888; /* Grigio Opencode */
+    }
+
+    /* Barra di input centrale e ridotta */
+    #chat-input {
+        width: 60%;
+        margin: 1 0; /* 1 riga verticale, 0 orizzontale */
+        border: tall #444444;
+        background: #1e1e1e;
+    }
+
+    /* Log della chat, inizialmente nascosto per lasciare spazio al banner */
+    #chat-log {
+        width: 80%;
+        height: 1fr;
+        display: none; 
+        margin-bottom: 1;
+        background: transparent;
+        scrollbar-size: 0 0;
+    }
+
+    /* Classe di utilità per mostrare il log dopo i 3 secondi */
+    .visible {
+        display: block !important;
     }
     """
 
-    # Correzione RUF012: tipizzazione esplicita ClassVar
+    theme = "tokyo-night"
+
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("ctrl+s", "open_settings", "Impostazioni"),
         ("ctrl+q", "quit_app", "Esci"),
@@ -127,16 +158,34 @@ class RaspyCodeApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield RichLog(id="chat-log", markup=True, wrap=True, highlight=True)
+        
+        # Container per centrare Logo combinato, Log e Input
+        with Vertical(id="main-container"):
+            # IL LOGO COMBINATO: un solo widget centrato
+            with Center(id="splash-container"):
+                yield Static(RASPY_BANNER, id="opencode-logo")
+                
+            yield RichLog(id="chat-log", markup=True, wrap=True, highlight=True)
+            with Center():
+                yield Input(placeholder=f"{USER_IDENTITY}> scrivi un messaggio...", id="chat-input")
+        
         yield Static(self._status_text(), id="status-bar")
-        yield Input(placeholder=f"{USER_IDENTITY}> scrivi un messaggio...", id="chat-input")
-        yield Footer()
+        # yield Footer()
 
     def on_mount(self) -> None:
         self.title = "raspyCode"
         self.sub_title = USER_IDENTITY
         self.query_one("#chat-input", Input).focus()
         self.run_worker(self._consume_bus(), exclusive=False)
+        
+        # Avvia la transizione dopo 3 secondi
+        self.set_timer(3.0, self.transition_to_chat)
+
+    def transition_to_chat(self) -> None:
+        # Nasconde il banner e mostra la chat
+        with contextlib.suppress(Exception):
+            self.query_one("#splash-container").display = False
+            self.query_one("#chat-log").add_class("visible")
 
     def _status_text(self) -> str:
         pi_status = (
@@ -153,7 +202,6 @@ class RaspyCodeApp(App):
         )
 
     def _refresh_status(self) -> None:
-        # Correzione S110: contextlib.suppress al posto di try-except-pass
         with contextlib.suppress(Exception):
             self.query_one("#status-bar", Static).update(self._status_text())
 
@@ -187,6 +235,7 @@ class RaspyCodeApp(App):
                 style = "red" if event.is_error else "green"
                 log.write(f"[{style}]{event.tool_name}[/] {event.result_output}")
             elif isinstance(event, StatusEvent):
+                # Nessun filtro necessario: gestiamo tutti gli StatusEvent (es. SYSTEM BOOT COMPLETED)
                 color = {"info": "dim", "warning": "yellow", "error": "bold red"}.get(
                     event.level, "dim"
                 )
@@ -199,6 +248,7 @@ class RaspyCodeApp(App):
                 self.current_model = event.model
             elif isinstance(event, PiConfigEvent):
                 self.pi_ip = event.pi_ip
+            
             self._queue.task_done()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
