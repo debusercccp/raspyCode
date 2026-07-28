@@ -72,11 +72,11 @@ class SettingsScreen(ModalScreen[None]):
                 "[dim]Invio su IP per confermare il routing · click su un modello "
                 "per selezionarlo · Esc per chiudere[/dim]"
             )
-
+ 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "pi-ip-input" and event.value.strip():
-            self.app.publish_from_ui(PiConfigEvent(pi_ip=event.value.strip()))  # type: ignore[attr-defined]
-
+            self.app.publish_from_ui(PiConfigEvent(pi_ip=event.value.strip())) 
+   
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         model_name = str(event.item.query_one(Label).renderable)
         self.app.publish_from_ui(ModelSelectedEvent(model=model_name))  # type: ignore[attr-defined]
@@ -178,9 +178,7 @@ class RaspyCodeApp(App):
         self.sub_title = USER_IDENTITY
         self.query_one("#chat-input", Input).focus()
         self.run_worker(self._consume_bus(), exclusive=False)
-        
-        # Avvia la transizione dopo 3 secondi
-        self.set_timer(3.0, self.transition_to_chat)
+       
 
     def transition_to_chat(self) -> None:
         # Nasconde il banner e mostra la chat
@@ -262,7 +260,25 @@ class RaspyCodeApp(App):
         if text in {"/quit", "/exit"}:
             self.action_quit_app()
             return
-        self.query_one("#chat-log", RichLog).write(f"[bold cyan]{USER_IDENTITY}>[/] {text}")
+
+        # 1. FORZIAMO LA SCOMPARSA DEL BANNER E LA COMPARSA DEL LOG
+        try:
+            splash = self.query_one("#splash-container")
+            splash.display = False
+        except Exception:
+            pass
+
+        log = self.query_one("#chat-log", RichLog)
+        log.add_class("visible")
+        log.refresh() # Forza il redraw immediato del widget
+
+        # 2. CONTROLLO MODELLO
+        if not self.current_model:
+            log.write("[bold red]Errore:[/] Nessun modello selezionato. Premi [cyan]Ctrl+S[/] per aprire le impostazioni e sceglierne uno.")
+            return
+
+        # 3. INVIO MESSAGGIO NORMALE
+        log.write(f"[bold cyan]{USER_IDENTITY}>[/] {text}")
         self.publish_from_ui(UserMessageEvent(sender_name=USER_IDENTITY, content=text))
 
     def action_open_settings(self) -> None:
@@ -273,3 +289,4 @@ class RaspyCodeApp(App):
 
     def publish_from_ui(self, event: Event) -> None:
         asyncio.get_running_loop().create_task(self._bus.publish(event))
+
