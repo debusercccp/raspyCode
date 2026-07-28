@@ -125,7 +125,7 @@ class RaspyCodeApp(App):
     #chat-log {
         width: 80%;
         height: 1fr;
-        display: none; 
+        display: none;
         margin-bottom: 1;
         background: transparent;
         scrollbar-size: 0 0;
