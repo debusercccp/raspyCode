@@ -8,7 +8,6 @@ su display TFT via framebuffer (`raspyDisplay`).
 
 ```text
 Laptop (10.42.0.1) ───eth0 cablato───▶ Raspberry Pi 5 (10.42.0.2:11434, Ollama)
-                                        └── wlan0 verso router (apt/ollama pull/NTP)
 
 ```
 
