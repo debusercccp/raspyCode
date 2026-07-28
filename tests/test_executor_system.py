@@ -6,6 +6,7 @@ from raspyCode.core.event_bus import EventBus
 from raspyCode.core.events import LLMToolCallEvent
 from raspyCode.services.tool_executor_service import ToolExecutorService
 
+
 @pytest.fixture
 def executor_service():
     bus = EventBus()
@@ -19,10 +20,10 @@ async def test_system_cmd_rejected_not_in_allowlist(executor_service):
         tool_name="system_run_cmd",
         arguments={"command": "rm -rf /"}  # Corretto: 'arguments' invece di 'args', e formato dict!
     )
-    
+
     # Eseguiamo direttamente il bypass testando la risposta del comando
     result, is_error = await executor_service._run_system_cmd(event.arguments)
-    
+
     assert is_error is True
     assert "non in allow-list" in result
 
@@ -36,6 +37,6 @@ async def test_system_cmd_allowed(mock_exec, executor_service):
 
     # Passiamo un dict come si aspetta la firma del metodo
     result, is_error = await executor_service._run_system_cmd({"command": "ls -l"})
-    
+
     assert is_error is False
     assert result == "mocked output"

@@ -72,11 +72,11 @@ class SettingsScreen(ModalScreen[None]):
                 "[dim]Invio su IP per confermare il routing · click su un modello "
                 "per selezionarlo · Esc per chiudere[/dim]"
             )
- 
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "pi-ip-input" and event.value.strip():
-            self.app.publish_from_ui(PiConfigEvent(pi_ip=event.value.strip())) 
-   
+            self.app.publish_from_ui(PiConfigEvent(pi_ip=event.value.strip()))
+
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         model_name = str(event.item.query_one(Label).renderable)
         self.app.publish_from_ui(ModelSelectedEvent(model=model_name))  # type: ignore[attr-defined]
@@ -159,17 +159,17 @@ class RaspyCodeApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        
+
         # Container per centrare Logo combinato, Log e Input
         with Vertical(id="main-container"):
             # IL LOGO COMBINATO: un solo widget centrato
             with Center(id="splash-container"):
                 yield Static(RASPY_BANNER, id="opencode-logo")
-                
+
             yield RichLog(id="chat-log", markup=True, wrap=True, highlight=True)
             with Center():
                 yield Input(placeholder=f"{USER_IDENTITY}> scrivi un messaggio...", id="chat-input")
-        
+
         yield Static(self._status_text(), id="status-bar")
         # yield Footer()
 
@@ -178,7 +178,7 @@ class RaspyCodeApp(App):
         self.sub_title = USER_IDENTITY
         self.query_one("#chat-input", Input).focus()
         self.run_worker(self._consume_bus(), exclusive=False)
-       
+
 
     def transition_to_chat(self) -> None:
         # Nasconde il banner e mostra la chat
@@ -247,7 +247,7 @@ class RaspyCodeApp(App):
                 self.current_model = event.model
             elif isinstance(event, PiConfigEvent):
                 self.pi_ip = event.pi_ip
-            
+
             self._queue.task_done()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:

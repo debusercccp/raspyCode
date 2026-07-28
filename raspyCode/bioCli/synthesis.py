@@ -12,7 +12,7 @@ def synth_seq(training_fasta: str, k: int, length: int, seed: int | None = None)
     # 1. Parsing delle sequenze di addestramento
     lines = training_fasta.splitlines()
     full_text = "".join(line.strip().upper() for line in lines if line and not line.startswith(">"))
-    
+
     if len(full_text) <= k:
         return "ATCG" * (length // 4)
 
@@ -33,7 +33,7 @@ def synth_seq(training_fasta: str, k: int, length: int, seed: int | None = None)
     chain_keys = list(chain.keys())
     current_context = random.choice(chain_keys)
     generated = [current_context]
-    
+
     while len("".join(generated)) < length:
         if current_context in chain:
             pop, w = chain[current_context]

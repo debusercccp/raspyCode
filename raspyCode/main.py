@@ -20,10 +20,10 @@ try:
 except ImportError:
     _HAS_DISPLAY_MODULE = False
 
-async def splash_screen_sequence(bus: EventBus):    
+async def splash_screen_sequence(bus: EventBus):
     # 2. Aspetta 3 secondi
     await asyncio.sleep(3)
-    
+
     # 3. Pulisce il TFT rimettendo il messaggio di base
     await bus.publish(StatusEvent(text="SYSTEM BOOT COMPLETED", level="info"))
 
@@ -45,7 +45,7 @@ async def main() -> None:
 
     hw_mode = await HardwareDetectionService.detect()
     app.hw_mode = hw_mode
-    
+
     asyncio.create_task(splash_screen_sequence(bus))
 
     tasks = [asyncio.create_task(coro) for coro in services]
