@@ -1,8 +1,10 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
-from raspyCode.services.tool_executor_service import ToolExecutorService
+
 from raspyCode.core.event_bus import EventBus
 from raspyCode.core.events import LLMToolCallEvent
+from raspyCode.services.tool_executor_service import ToolExecutorService
 
 @pytest.fixture
 def executor_service():

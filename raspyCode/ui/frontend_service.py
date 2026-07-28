@@ -6,7 +6,7 @@ import contextlib
 from typing import ClassVar
 
 from textual.app import App, ComposeResult
-from textual.containers import Vertical, Center
+from textual.containers import Center, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import (
@@ -18,6 +18,7 @@ from textual.widgets import (
     RichLog,
     Static,
 )
+
 from raspyCode.ui.banner import RASPY_BANNER
 
 from ..core.event_bus import EventBus

@@ -1,8 +1,10 @@
-import pytest
+from unittest.mock import MagicMock, patch
+
 import httpx
-from unittest.mock import patch, MagicMock
-from raspyCode.services.connectivity_service import ConnectivityService
+import pytest
+
 from raspyCode.core.event_bus import EventBus
+from raspyCode.services.connectivity_service import ConnectivityService
 
 @pytest.fixture
 def connectivity_service():
