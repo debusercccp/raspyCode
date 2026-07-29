@@ -1,12 +1,12 @@
-import asyncio
-import json
 import sqlite3
-import numpy as np
-import httpx
-from pathlib import Path
 from typing import List, Tuple
+
+import httpx
+import numpy as np
+
 from raspyCode.core.event_bus import EventBus
 from raspyCode.core.events import Event
+
 
 class RAGService:
     """
@@ -89,13 +89,13 @@ class RAGService:
                 try:
                     query_emb = await self.get_embedding(event.query)
                     top_docs = self.search_similar(query_emb, top_k=2)
-                    
+
                     context_text = "\n".join([f"- {doc[0]} (score: {doc[1]:.2f})" for doc in top_docs])
-                    
+
                     # Pubblica un nuovo evento arricchito per LLMGatewayService
                     enriched_prompt = f"Contesto RAG:\n{context_text}\n\nDomanda utente: {event.query}"
                     self.bus.publish(Event(type="EnrichedChatEvent", prompt=enriched_prompt))
-                except Exception as e:
+                except Exception:
                     # Fallback elegante in caso di errore (es. Ollama offline o DB vuoto)
                     self.bus.publish(Event(type="EnrichedChatEvent", prompt=event.query))
             self._queue.task_done()

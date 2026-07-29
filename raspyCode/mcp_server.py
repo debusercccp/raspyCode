@@ -1,10 +1,11 @@
 import sys
 from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 
 # Assicura che il pacchetto raspyCode sia risolvibile
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from raspyCode.bioCli.sequence import gcContent, revComp, dnaToRna
+from raspyCode.bioCli.sequence import dnaToRna, gcContent, revComp
 
 # Inizializza il server MCP per la bioinformatica
 mcp = FastMCP("RaspyCode-BioToolkit")
