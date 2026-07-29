@@ -132,3 +132,60 @@ eventuale training).
       `__pycache__`
 - [ ] `ruff check .` e `pytest tests/ -v` puliti prima di ogni push (la CI
       in `.github/workflows/ci.yml` li rilancia comunque su ogni PR)
+
+## 8. Raspberry Pi — Stack RAG (Ollama Embedding + SQLite DB locale)
+
+- [ ] Scaricare il modello di embedding leggero su Ollama (tramite wlan0):
+  ```bash
+  ollama pull nomic-embed-text
+  ```
+
+* [ ] Installare le dipendenze necessarie per il calcolo vettoriale in locale nel venv:
+```bash
+pip install numpy httpx
+
+```
+
+* [ ] Verificare le prestazioni del servizio di embedding sul Pi da laptop:
+```bash
+curl [http://10.42.0.2:11434/api/embeddings](http://10.42.0.2:11434/api/embeddings) -d '{
+  "model": "nomic-embed-text",
+  "prompt": "Test sequenza genomica AGCT"
+}'
+
+```
+
+* [ ] Registrare il nuovo microservizio `RAGService` all'interno di `raspyCode/main.py` agganciandolo al loop `asyncio` e al bus condiviso.
+* [ ] Popolare il database SQLite (`raspycode_rag.db`) tramite un piccolo script di ingestione che legga file di testo/documentazione e inserisca i BLOB vettoriali quantizzati nella tabella `documents`.
+
+## 9. Raspberry Pi — Esposizione bioCli come MCP Server (Model Context Protocol)
+
+* [ ] Installare l'SDK Python ufficiale MCP nel virtual environment:
+```bash
+pip install mcp
+
+```
+
+* [ ] Copiare il file `raspyCode/mcp_server.py` ed eseguirlo come server locale per verificare la corretta esposizione su `stdio`:
+```bash
+python -m raspyCode.mcp_server
+
+```
+
+* [ ] Configurare il client all'interno di `ToolExecutorService` per connettersi al processo MCP anziché eseguire il routing statico via `if/elif`.
+
+## 10. Laptop / Orchestrazione — Integrazione RAG e MCP sull'EventBus
+
+* [ ] Assicurarsi che `LLMGatewayService` sottoscriva gli eventi `EnrichedChatEvent` (prodotti da `RAGService`) al posto del semplice `UserChatEvent`.
+* [ ] Verificare che in caso di fallimento o database SQLite vuoto, il `RAGService` inoltri comunque la domanda utente senza interruzioni di servizio.
+* [ ] Eseguire la suite di test locali con `pytest tests/ -v` per garantire che l'inserimento dei nuovi servizi non causi regressioni nelle code di `EventBus`.
+
+```
+---
+
+Per aiutarti a visualizzare come si comporterà `RAGService` sul tuo Raspberry Pi prima di avviare il loop in Python, ho configurato una simulazione interattiva. Puoi modificare il prompt di test per verificare come il punteggio di similarità (coseno) selezioni e ordini i segmenti biologici all'interno del database SQLite locale.
+
+```json?chameleon
+{"component":"LlmGeneratedComponent","props":{"height":"600px","prompt":"Create an interactive educational simulator in Italian titled 'Simulatore RAGService (SQLite + Ollama Embedding)'. The simulator explains how the RAG microservice converts an input prompt into vector embeddings and matches them against SQLite records using cosine similarity. Use standard layout. Include a text input field for 'Domanda Utente' pre-filled with 'Come si calcola la percentuale di Guanina e Citosina?'. Include a slider to set the similarity threshold (from 0.00 to 1.00, default 0.65). Include a dynamic table or list representing SQLite DB records with sample genomics/bioinformatics chunks (e.g. GC content definitions, Hamming distance explanations, DNA to RNA transcription rules). When the user changes the query or threshold, dynamically compute and display simulated cosine similarity scores for each DB chunk, highlighting the chunks that exceed the threshold and are injected into the 'EnrichedChatEvent' for the LLM. Add clean visual differentiation for selected vs rejected chunks.","id":"im_0e533bf4040a7cae"}}
+
+```
