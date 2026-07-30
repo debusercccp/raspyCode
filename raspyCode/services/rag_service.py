@@ -5,7 +5,7 @@ import httpx
 import numpy as np
 
 from raspyCode.core.event_bus import EventBus
-from raspyCode.core.events import Event
+from raspyCode.core.events import EnrichedChatEvent
 
 
 class RAGService:
@@ -19,7 +19,7 @@ class RAGService:
         self.db_path = db_path
         self.ollama_host = ollama_host
         self.model_name = "nomic-embed-text"
-        self._queue = self.bus.subscribe("UserChatEvent")
+        self._queue = self.bus.subscribe()
         self._init_db()
 
     def _init_db(self):
@@ -94,8 +94,8 @@ class RAGService:
 
                     # Pubblica un nuovo evento arricchito per LLMGatewayService
                     enriched_prompt = f"Contesto RAG:\n{context_text}\n\nDomanda utente: {event.query}"
-                    self.bus.publish(Event(type="EnrichedChatEvent", prompt=enriched_prompt))
+                    await self.bus.publish(EnrichedChatEvent(prompt=enriched_prompt))
                 except Exception:
                     # Fallback elegante in caso di errore (es. Ollama offline o DB vuoto)
-                    self.bus.publish(Event(type="EnrichedChatEvent", prompt=event.query))
+                    await self.bus.publish(EnrichedChatEvent(prompt=event.query))
             self._queue.task_done()

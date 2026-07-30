@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 
 # Assicura che il pacchetto raspyCode sia risolvibile
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from raspyCode.bioCli.sequence import dnaToRna, gcContent, revComp
+from raspyCode.bioCli.sequence import dna_to_rna, gc_content, rev_comp
 
 # Inizializza il server MCP per la bioinformatica
 mcp = FastMCP("RaspyCode-BioToolkit")
@@ -14,7 +14,7 @@ mcp = FastMCP("RaspyCode-BioToolkit")
 def calculate_gc_content(sequence: str) -> str:
     """Calcola la percentuale del contenuto GC in una sequenza DNA/RNA."""
     try:
-        res = gcContent.gc_content(sequence)
+        res = gc_content(sequence)
         return f"GC Content: {res}%"
     except Exception as e:
         return f"Errore nel calcolo del GC Content: {str(e)}"
@@ -23,7 +23,7 @@ def calculate_gc_content(sequence: str) -> str:
 def reverse_complement(sequence: str) -> str:
     """Restituisce il filamento complementare inverso di una sequenza DNA."""
     try:
-        return revComp.rev_comp(sequence)
+        return rev_comp(sequence)
     except Exception as e:
         return f"Errore nel calcolo del Reverse Complement: {str(e)}"
 
@@ -31,7 +31,7 @@ def reverse_complement(sequence: str) -> str:
 def translate_dna_to_rna(sequence: str) -> str:
     """Trascrive una sequenza di DNA nel corrispondente filamento di RNA."""
     try:
-        return dnaToRna.dna_to_rna(sequence)
+        return dna_to_rna(sequence)
     except Exception as e:
         return f"Errore nella trascrizione DNA->RNA: {str(e)}"
 

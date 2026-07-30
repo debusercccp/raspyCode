@@ -21,12 +21,12 @@ dependencies = [
     "rich>=13.0.0",     # Dipendenza nativa di Textual / BioPipeLine
     "biopython>=1.80",  # Core parsing genomico per gli script bioCli
     "pandas>=2.0.0",    # Utilizzato da blastOutput.py
+    "numpy>=1.24.0",    # Calcolo vettoriale (RAGService: similarita' coseno)
 ]
 
 [project.optional-dependencies]
 # Estensioni facoltative da compilare solo sul Raspberry Pi con TFT
 tft = [
-    "numpy>=1.24.0",
     "pillow>=9.5.0",
 ]
 
@@ -35,6 +35,14 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.3.0",
+]
+
+# Esposizione facoltativa di bioCli come server MCP (mcp_server.py, TODO punto 9).
+# ATTENZIONE: dalla v2 l'SDK ufficiale ha rifatto l'API e rimosso
+# mcp.server.fastmcp; mcp_server.py e' scritto contro la v1.x, quindi il pin
+# <2 e' necessario finche' non viene migrato (vedi note SDK ufficiale).
+mcp = [
+    "mcp>=1.28,<2",
 ]
 
 [project.scripts]

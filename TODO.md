@@ -162,7 +162,12 @@ curl [http://10.42.0.2:11434/api/embeddings](http://10.42.0.2:11434/api/embeddin
 
 * [ ] Installare l'SDK Python ufficiale MCP nel virtual environment:
 ```bash
-pip install mcp
+# ATTENZIONE: da un certo punto in poi `pip install mcp` installa di default
+# la v2 dell'SDK, che ha rifatto l'API e rimosso `mcp.server.fastmcp`
+# (mcp_server.py e' scritto contro la v1.x). Pinnare la major version:
+pip install "mcp>=1.28,<2"
+# equivalente con l'extra dichiarato in pyproject.toml:
+pip install -e ".[mcp]"
 
 ```
 

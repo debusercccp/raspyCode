@@ -69,3 +69,15 @@ class ModelSelectedEvent(Event):
 class PiConfigEvent(Event):
     """L'utente ha cambiato l'IP del Raspberry Pi dalle impostazioni (routing)."""
     pi_ip: str
+
+
+@dataclass
+class UserChatEvent(Event):
+    """Domanda utente grezza, in ingresso a RAGService per l'arricchimento."""
+    query: str
+
+
+@dataclass
+class EnrichedChatEvent(Event):
+    """Prompt arricchito col contesto RAG, prodotto da RAGService per il gateway LLM."""
+    prompt: str
