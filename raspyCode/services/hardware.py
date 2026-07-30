@@ -1,6 +1,11 @@
 """Rilevamento hardware di inferenza disponibile sul nodo corrente."""
 import asyncio
 
+# Timeout per ogni probe di binario: rocm-smi/nvidia-smi non dovrebbero mai
+# pendere, ma se lo fanno (driver rotto, hardware in stato anomalo) non deve
+# bloccare l'avvio dell'intera app.
+CHECK_TIMEOUT_SECONDS = 5.0
+
 
 class HardwareDetectionService:
     @staticmethod
@@ -19,6 +24,15 @@ class HardwareDetectionService:
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            return await proc.wait() == 0
         except FileNotFoundError:
+            return False
+
+        try:
+            returncode = await asyncio.wait_for(
+                proc.wait(), timeout=CHECK_TIMEOUT_SECONDS
+            )
+            return returncode == 0
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
             return False

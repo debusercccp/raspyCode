@@ -31,7 +31,6 @@ _BIOTOOLKIT_TOOL_NAMES = [
     "biotoolkit_longest_shared_seq", "biotoolkit_grep_fastx", "biotoolkit_motif_find",
     "biotoolkit_n_glyc_motif", "biotoolkit_restriction_site", "biotoolkit_fastx_sampler",
     "biotoolkit_seq_magic", "biotoolkit_blast_output", "biotoolkit_synth_seq",
-    "biotoolkit_pipeline",
 ]
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
