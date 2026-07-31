@@ -3,6 +3,7 @@
 una copia di ogni evento pubblicato (o, se si passano dei tipi, solo degli
 eventi di quei tipi).
 """
+
 import asyncio
 
 from .events import Event
@@ -23,7 +24,9 @@ class EventBus:
         self._max_queue_size = max_queue_size
         # ogni subscriber e' una coppia (coda, tipi_di_interesse). tipi_di_interesse
         # None = riceve tutto (comportamento storico, retrocompatibile).
-        self._subscribers: list[tuple[asyncio.Queue, tuple[type[Event], ...] | None]] = []
+        self._subscribers: list[
+            tuple[asyncio.Queue, tuple[type[Event], ...] | None]
+        ] = []
 
     def subscribe(self, *event_types: type[Event]) -> asyncio.Queue[Event]:
         """Senza argomenti: comportamento storico, riceve ogni evento.

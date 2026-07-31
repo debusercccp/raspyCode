@@ -2,6 +2,7 @@
 
 Ogni microservizio pubblica/consuma un sottoinsieme di questi tipi.
 """
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,6 +21,7 @@ class UserMessageEvent(Event):
 @dataclass
 class AssistantTokenEvent(Event):
     """Chunk di streaming testuale dal modello. done=True marca fine risposta."""
+
     content: str
     done: bool = False
 
@@ -42,6 +44,7 @@ class ToolResultEvent(Event):
 @dataclass
 class StatusEvent(Event):
     """Stato di sistema, consumato da TFTDisplayService e dalla TUI."""
+
     text: str
     level: str = "info"  # info | warning | error
 
@@ -49,6 +52,7 @@ class StatusEvent(Event):
 @dataclass
 class ConnectionStatusEvent(Event):
     """Esito dell'ultimo healthcheck verso Ollama sul Raspberry Pi."""
+
     connected: bool
     detail: str = ""
 
@@ -56,28 +60,33 @@ class ConnectionStatusEvent(Event):
 @dataclass
 class ModelListEvent(Event):
     """Modelli disponibili sul Pi, letti da /api/tags durante l'healthcheck."""
+
     models: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ModelSelectedEvent(Event):
     """L'utente ha scelto un modello dalle impostazioni."""
+
     model: str
 
 
 @dataclass
 class PiConfigEvent(Event):
     """L'utente ha cambiato l'IP del Raspberry Pi dalle impostazioni (routing)."""
+
     pi_ip: str
 
 
 @dataclass
 class UserChatEvent(Event):
     """Domanda utente grezza, in ingresso a RAGService per l'arricchimento."""
+
     query: str
 
 
 @dataclass
 class EnrichedChatEvent(Event):
     """Prompt arricchito col contesto RAG, prodotto da RAGService per il gateway LLM."""
+
     prompt: str

@@ -1,4 +1,5 @@
 """ToolExecutorService: esegue il tool-calling locale via chiamate a funzioni pure."""
+
 import asyncio
 import os
 import random
@@ -11,7 +12,16 @@ from ..core.event_bus import EventBus
 from ..core.events import LLMToolCallEvent, StatusEvent, ToolResultEvent
 
 SYSTEM_CMD_ALLOWLIST = {
-    "ls", "cat", "df", "free", "uname", "whoami", "pwd", "head", "tail", "wc",
+    "ls",
+    "cat",
+    "df",
+    "free",
+    "uname",
+    "whoami",
+    "pwd",
+    "head",
+    "tail",
+    "wc",
 }
 
 # L'allow-list protegge quale BINARIO puo' girare, non quali DATI e' in
@@ -43,7 +53,9 @@ class ToolExecutorService:
             event = await self._queue.get()
             if isinstance(event, LLMToolCallEvent):
                 await self._bus.publish(
-                    StatusEvent(text=f"[TOOL RUNNING]\n{event.tool_name}...", level="info")
+                    StatusEvent(
+                        text=f"[TOOL RUNNING]\n{event.tool_name}...", level="info"
+                    )
                 )
                 await self._execute(event)
             self._queue.task_done()
@@ -75,7 +87,9 @@ class ToolExecutorService:
             output = f"Errore esecuzione tool '{event.tool_name}': {exc}"
             is_error = True
 
-        await self._bus.publish(StatusEvent(text="IDLE - in attesa di query...", level="info"))
+        await self._bus.publish(
+            StatusEvent(text="IDLE - in attesa di query...", level="info")
+        )
         await self._bus.publish(
             ToolResultEvent(
                 call_id=event.call_id,
@@ -95,22 +109,40 @@ class ToolExecutorService:
         if event.tool_name == "biotoolkit_gc_content":
             return f"Contenuto GC: {bioCli.gc_content(args[0] if args else '')}%", False
         if event.tool_name == "biotoolkit_rev_comp":
-            return f"Reverse Complement: {bioCli.rev_comp(args[0] if args else '')}", False
+            return (
+                f"Reverse Complement: {bioCli.rev_comp(args[0] if args else '')}",
+                False,
+            )
         if event.tool_name == "biotoolkit_dna_to_rna":
-            return f"Trascrizione RNA: {bioCli.dna_to_rna(args[0] if args else '')}", False
+            return (
+                f"Trascrizione RNA: {bioCli.dna_to_rna(args[0] if args else '')}",
+                False,
+            )
         if event.tool_name == "biotoolkit_rna_to_prot":
-            return f"Traduzione Proteina: {bioCli.rna_to_prot(args[0] if args else '')}", False
+            return (
+                f"Traduzione Proteina: {bioCli.rna_to_prot(args[0] if args else '')}",
+                False,
+            )
         if event.tool_name == "biotoolkit_base_count":
-            return f"Conteggio basi: {bioCli.base_count(args[0] if args else '')}", False
+            return (
+                f"Conteggio basi: {bioCli.base_count(args[0] if args else '')}",
+                False,
+            )
         if event.tool_name == "biotoolkit_hamming_dist":
             dist = bioCli.hamming_dist(args[0], args[1]) if len(args) > 1 else 0
             return f"Distanza di Hamming: {dist}", False
         if event.tool_name == "biotoolkit_orf_finder":
             return f"ORF trovati: {bioCli.orf_finder(args[0] if args else '')}", False
         if event.tool_name == "biotoolkit_how_many_seq":
-            return f"Numero di sequenze: {bioCli.how_many_seq(args[0] if args else '')}", False
+            return (
+                f"Numero di sequenze: {bioCli.how_many_seq(args[0] if args else '')}",
+                False,
+            )
         if event.tool_name == "biotoolkit_longest_shared_seq":
-            return f"Sottosequenza condivisa più lunga: {bioCli.longest_shared_seq(args)}", False
+            return (
+                f"Sottosequenza condivisa più lunga: {bioCli.longest_shared_seq(args)}",
+                False,
+            )
         if event.tool_name == "biotoolkit_genome_assembly":
             return f"Genoma assemblato: {bioCli.genome_assembly(args)}", False
         if event.tool_name == "biotoolkit_grep_fastx":
@@ -122,23 +154,41 @@ class ToolExecutorService:
                 return "Servono 2 argomenti: pattern, sequenza", True
             return f"Posizioni motivo: {bioCli.motif_find(args[0], args[1])}", False
         if event.tool_name == "biotoolkit_n_glyc_motif":
-            return f"Posizioni N-glicosilazione: {bioCli.n_glyc_motif(args[0] if args else '')}", False
+            return (
+                f"Posizioni N-glicosilazione: {bioCli.n_glyc_motif(args[0] if args else '')}",
+                False,
+            )
         if event.tool_name == "biotoolkit_restriction_site":
-            return f"Siti di restrizione: {bioCli.restriction_site(args[0] if args else '')}", False
+            return (
+                f"Siti di restrizione: {bioCli.restriction_site(args[0] if args else '')}",
+                False,
+            )
         if event.tool_name == "biotoolkit_fastx_sampler":
             if not args:
-                return "Serve almeno 1 argomento: contenuto_fasta[, percentuale, seed]", True
+                return (
+                    "Serve almeno 1 argomento: contenuto_fasta[, percentuale, seed]",
+                    True,
+                )
             content = args[0]
             percent = float(args[1]) if len(args) > 1 else 10.0
             seed = int(args[2]) if len(args) > 2 else None
             return bioCli.fastx_sampler(content, percent, seed), False
         if event.tool_name == "biotoolkit_seq_magic":
-            return f"Statistiche per record: {bioCli.seq_magic(args[0] if args else '')}", False
+            return (
+                f"Statistiche per record: {bioCli.seq_magic(args[0] if args else '')}",
+                False,
+            )
         if event.tool_name == "biotoolkit_blast_output":
-            return f"Righe BLAST parsate: {bioCli.blast_output(args[0] if args else '')}", False
+            return (
+                f"Righe BLAST parsate: {bioCli.blast_output(args[0] if args else '')}",
+                False,
+            )
         if event.tool_name == "biotoolkit_synth_seq":
             if len(args) < 3:
-                return "Servono almeno 3 argomenti: training_fasta, k, length[, seed]", True
+                return (
+                    "Servono almeno 3 argomenti: training_fasta, k, length[, seed]",
+                    True,
+                )
             training, k, length = args[0], int(args[1]), int(args[2])
             seed = int(args[3]) if len(args) > 3 else None
             return bioCli.synth_seq(training, k, length, seed), False
@@ -219,7 +269,9 @@ class ToolExecutorService:
                 f"{TOOL_TIMEOUT_SECONDS:.0f}s superato.",
                 True,
             )
-        text = (stdout.decode(errors="replace") + stderr.decode(errors="replace")).strip()
+        text = (
+            stdout.decode(errors="replace") + stderr.decode(errors="replace")
+        ).strip()
         text_bytes = text.encode(errors="replace")
         if len(text_bytes) > MAX_OUTPUT_BYTES:
             text = (

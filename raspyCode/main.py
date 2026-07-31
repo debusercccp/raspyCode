@@ -3,6 +3,7 @@
 Istanzia l'EventBus e i microservizi, rileva l'hardware, ed esegue
 l'interfaccia Textual in foreground e i servizi in background.
 """
+
 import asyncio
 import os
 
@@ -16,9 +17,11 @@ from .ui.frontend_service import RaspyCodeApp
 
 try:
     from .services.display_service import TFTDisplayService
+
     _HAS_DISPLAY_MODULE = True
 except ImportError:
     _HAS_DISPLAY_MODULE = False
+
 
 async def splash_screen_sequence(bus: EventBus):
     # 2. Aspetta 3 secondi
@@ -26,6 +29,7 @@ async def splash_screen_sequence(bus: EventBus):
 
     # 3. Pulisce il TFT rimettendo il messaggio di base
     await bus.publish(StatusEvent(text="SYSTEM BOOT COMPLETED", level="info"))
+
 
 async def main() -> None:
     bus = EventBus()

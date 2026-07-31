@@ -1,4 +1,5 @@
 """LLMGatewayService: client verso Ollama (endpoint /api/chat) sul Raspberry Pi."""
+
 import asyncio
 import json
 import uuid
@@ -46,12 +47,24 @@ OLLAMA_HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=300.0, write=10.0, pool=10
 MAX_HISTORY_MESSAGES = 40
 
 _BIOTOOLKIT_TOOL_NAMES = [
-    "biotoolkit_gc_content", "biotoolkit_rev_comp", "biotoolkit_dna_to_rna",
-    "biotoolkit_rna_to_prot", "biotoolkit_base_count", "biotoolkit_hamming_dist",
-    "biotoolkit_orf_finder", "biotoolkit_genome_assembly", "biotoolkit_how_many_seq",
-    "biotoolkit_longest_shared_seq", "biotoolkit_grep_fastx", "biotoolkit_motif_find",
-    "biotoolkit_n_glyc_motif", "biotoolkit_restriction_site", "biotoolkit_fastx_sampler",
-    "biotoolkit_seq_magic", "biotoolkit_blast_output", "biotoolkit_synth_seq",
+    "biotoolkit_gc_content",
+    "biotoolkit_rev_comp",
+    "biotoolkit_dna_to_rna",
+    "biotoolkit_rna_to_prot",
+    "biotoolkit_base_count",
+    "biotoolkit_hamming_dist",
+    "biotoolkit_orf_finder",
+    "biotoolkit_genome_assembly",
+    "biotoolkit_how_many_seq",
+    "biotoolkit_longest_shared_seq",
+    "biotoolkit_grep_fastx",
+    "biotoolkit_motif_find",
+    "biotoolkit_n_glyc_motif",
+    "biotoolkit_restriction_site",
+    "biotoolkit_fastx_sampler",
+    "biotoolkit_seq_magic",
+    "biotoolkit_blast_output",
+    "biotoolkit_synth_seq",
 ]
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -114,7 +127,9 @@ class LLMGatewayService:
         self.pi_ip = pi_ip
         self.base_url = f"http://{pi_ip}:11434"
         self.model: str | None = model
-        self.history: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.history: list[dict[str, Any]] = [
+            {"role": "system", "content": SYSTEM_PROMPT}
+        ]
         self._pending_tool_calls: dict[str, asyncio.Future[ToolResultEvent]] = {}
         self._client = httpx.AsyncClient(timeout=OLLAMA_HTTP_TIMEOUT)
 
@@ -144,13 +159,17 @@ class LLMGatewayService:
                 elif isinstance(event, ModelSelectedEvent):
                     self.model = event.model
                     await self._bus.publish(
-                        StatusEvent(text=f"Modello selezionato: {event.model}", level="info")
+                        StatusEvent(
+                            text=f"Modello selezionato: {event.model}", level="info"
+                        )
                     )
                 elif isinstance(event, PiConfigEvent):
                     self.pi_ip = event.pi_ip
                     self.base_url = f"http://{event.pi_ip}:11434"
                     await self._bus.publish(
-                        StatusEvent(text=f"Routing aggiornato: {self.base_url}", level="info")
+                        StatusEvent(
+                            text=f"Routing aggiornato: {self.base_url}", level="info"
+                        )
                     )
                 self._queue.task_done()
         finally:
@@ -169,7 +188,9 @@ class LLMGatewayService:
         await self._converse()
 
     async def _converse(self) -> None:
-        await self._bus.publish(StatusEvent(text="Interrogazione modello...", level="info"))
+        await self._bus.publish(
+            StatusEvent(text="Interrogazione modello...", level="info")
+        )
         self._trim_history()
 
         while True:
@@ -202,7 +223,10 @@ class LLMGatewayService:
                             break
             except httpx.HTTPError as exc:
                 await self._bus.publish(
-                    StatusEvent(text=f"Errore comunicazione Ollama ({self.base_url}): {exc}", level="error")
+                    StatusEvent(
+                        text=f"Errore comunicazione Ollama ({self.base_url}): {exc}",
+                        level="error",
+                    )
                 )
                 await self._bus.publish(AssistantTokenEvent(content="", done=True))
                 return
@@ -215,7 +239,11 @@ class LLMGatewayService:
                 return
 
             self.history.append(
-                {"role": "assistant", "content": assistant_content, "tool_calls": tool_calls}
+                {
+                    "role": "assistant",
+                    "content": assistant_content,
+                    "tool_calls": tool_calls,
+                }
             )
 
             await self._handle_tool_calls(tool_calls)
@@ -250,16 +278,22 @@ class LLMGatewayService:
                     }
                 )
                 await self._bus.publish(
-                    StatusEvent(text=f"Tool call malformato ignorato: {exc}", level="warning")
+                    StatusEvent(
+                        text=f"Tool call malformato ignorato: {exc}", level="warning"
+                    )
                 )
                 continue
 
-            fut: asyncio.Future[ToolResultEvent] = asyncio.get_running_loop().create_future()
+            fut: asyncio.Future[ToolResultEvent] = (
+                asyncio.get_running_loop().create_future()
+            )
             self._pending_tool_calls[call_id] = fut
 
             try:
                 await self._bus.publish(
-                    LLMToolCallEvent(call_id=call_id, tool_name=tool_name, arguments=args)
+                    LLMToolCallEvent(
+                        call_id=call_id, tool_name=tool_name, arguments=args
+                    )
                 )
                 result_event = await asyncio.wait_for(
                     fut, timeout=GATEWAY_TOOL_TIMEOUT_SECONDS

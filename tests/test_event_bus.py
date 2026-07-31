@@ -27,6 +27,7 @@ async def test_event_bus_subscription_and_publishing():
     assert received_1 is test_event
     assert received_2 is test_event
 
+
 @pytest.mark.asyncio
 async def test_event_bus_multiple_events():
     bus = EventBus()

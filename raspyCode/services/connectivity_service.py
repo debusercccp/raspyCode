@@ -1,4 +1,5 @@
 """ConnectivityService: healthcheck periodico verso Ollama sul Raspberry Pi."""
+
 import asyncio
 import contextlib
 
@@ -45,10 +46,14 @@ class ConnectivityService:
             resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
-            models = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+            models = [
+                m.get("name", "") for m in data.get("models", []) if m.get("name")
+            ]
             await self._bus.publish(ConnectionStatusEvent(connected=True))
             await self._bus.publish(ModelListEvent(models=models))
         except (httpx.HTTPError, ValueError):
             await self._bus.publish(
-                ConnectionStatusEvent(connected=False, detail=f"Pi non raggiungibile su {url}")
+                ConnectionStatusEvent(
+                    connected=False, detail=f"Pi non raggiungibile su {url}"
+                )
             )

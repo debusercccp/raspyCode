@@ -1,4 +1,5 @@
 """RaspyCodeApp: interfaccia full-screen basata su Textual."""
+
 from __future__ import annotations
 
 import asyncio
@@ -37,12 +38,15 @@ from ..core.events import (
 
 USER_IDENTITY = "noya"
 
+
 class SettingsScreen(ModalScreen[None]):
     """Impostazioni: routing (IP del Raspberry Pi) e scelta del modello."""
 
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "dismiss", "Chiudi")]
 
-    def __init__(self, current_pi_ip: str, current_model: str | None, models: list[str]) -> None:
+    def __init__(
+        self, current_pi_ip: str, current_model: str | None, models: list[str]
+    ) -> None:
         super().__init__()
         self._current_pi_ip = current_pi_ip
         self._current_model = current_model
@@ -57,7 +61,10 @@ class SettingsScreen(ModalScreen[None]):
             if self._models:
                 yield ListView(
                     *[
-                        ListItem(Label(m), classes="selected" if m == self._current_model else "")
+                        ListItem(
+                            Label(m),
+                            classes="selected" if m == self._current_model else "",
+                        )
                         for m in self._models
                     ],
                     id="model-list",
@@ -81,6 +88,7 @@ class SettingsScreen(ModalScreen[None]):
         model_name = str(event.item.query_one(Label).renderable)
         self.app.publish_from_ui(ModelSelectedEvent(model=model_name))  # type: ignore[attr-defined]
         self.dismiss()
+
 
 class RaspyCodeApp(App):
     """App full-screen: chat a tutto schermo + status bar + impostazioni."""
@@ -168,7 +176,10 @@ class RaspyCodeApp(App):
 
             yield RichLog(id="chat-log", markup=True, wrap=True, highlight=True)
             with Center():
-                yield Input(placeholder=f"{USER_IDENTITY}> scrivi un messaggio...", id="chat-input")
+                yield Input(
+                    placeholder=f"{USER_IDENTITY}> scrivi un messaggio...",
+                    id="chat-input",
+                )
 
         yield Static(self._status_text(), id="status-bar")
         # yield Footer()
@@ -179,7 +190,6 @@ class RaspyCodeApp(App):
         self.query_one("#chat-input", Input).focus()
         self.run_worker(self._consume_bus(), exclusive=False)
 
-
     def transition_to_chat(self) -> None:
         # Nasconde il banner e mostra la chat
         with contextlib.suppress(Exception):
@@ -188,7 +198,9 @@ class RaspyCodeApp(App):
 
     def _status_text(self) -> str:
         pi_status = (
-            "[green]Pi collegato[/]" if self.pi_connected else "[bold red]Pi non collegato[/]"
+            "[green]Pi collegato[/]"
+            if self.pi_connected
+            else "[bold red]Pi non collegato[/]"
         )
         model_status = (
             f"[cyan]{self.current_model}[/]"
@@ -270,11 +282,13 @@ class RaspyCodeApp(App):
 
         log = self.query_one("#chat-log", RichLog)
         log.add_class("visible")
-        log.refresh() # Forza il redraw immediato del widget
+        log.refresh()  # Forza il redraw immediato del widget
 
         # 2. CONTROLLO MODELLO
         if not self.current_model:
-            log.write("[bold red]Errore:[/] Nessun modello selezionato. Premi [cyan]Ctrl+S[/] per aprire le impostazioni e sceglierne uno.")
+            log.write(
+                "[bold red]Errore:[/] Nessun modello selezionato. Premi [cyan]Ctrl+S[/] per aprire le impostazioni e sceglierne uno."
+            )
             return
 
         # 3. INVIO MESSAGGIO NORMALE
@@ -282,11 +296,12 @@ class RaspyCodeApp(App):
         self.publish_from_ui(UserMessageEvent(sender_name=USER_IDENTITY, content=text))
 
     def action_open_settings(self) -> None:
-        self.push_screen(SettingsScreen(self.pi_ip, self.current_model, self.available_models))
+        self.push_screen(
+            SettingsScreen(self.pi_ip, self.current_model, self.available_models)
+        )
 
     def action_quit_app(self) -> None:
         self.exit()
 
     def publish_from_ui(self, event: Event) -> None:
         asyncio.get_running_loop().create_task(self._bus.publish(event))
-

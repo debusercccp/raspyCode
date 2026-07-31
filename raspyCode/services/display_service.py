@@ -7,6 +7,7 @@ senza HAT collegato) il servizio si disabilita silenziosamente e continua
 a drenare la coda per non accumulare memoria, senza mai far crashare
 il resto dell'agente.
 """
+
 from pathlib import Path
 
 from ..core.event_bus import EventBus
@@ -21,6 +22,7 @@ _LEVEL_STYLE = {
     "warning": ((60, 45, 0), (255, 200, 60)),
     "error": ((60, 10, 10), (255, 80, 80)),
 }
+
 
 class TFTDisplayService:
     def __init__(self, bus: EventBus) -> None:

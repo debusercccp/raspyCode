@@ -19,12 +19,13 @@ def n_glyc_motif(seq: str) -> list[int]:
 def restriction_site(seq: str) -> list[tuple[int, int]]:
     """Trova i siti di restrizione (palindromi inversi di lunghezza compresa tra 4 e 12)."""
     from .sequence import rev_comp
+
     seq = seq.upper()
     results = []
     n = len(seq)
     for length in range(4, 13):
         for i in range(n - length + 1):
-            sub = seq[i:i+length]
+            sub = seq[i : i + length]
             if sub == rev_comp(sub):
                 results.append((i + 1, length))
     return sorted(results)

@@ -6,6 +6,7 @@ mcp_server.py espone bioCli come server MCP: e' un'estensione opzionale
 installato in questo ambiente, questi test vengono saltati invece di
 fallire la CI standard.
 """
+
 import pytest
 
 mcp_pkg = pytest.importorskip(

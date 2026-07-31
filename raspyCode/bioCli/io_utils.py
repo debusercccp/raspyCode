@@ -23,7 +23,7 @@ def seq_magic(fasta_content: str) -> dict[str, dict[str, float | int]]:
             "A": seq_str.count("A"),
             "T": seq_str.count("T"),
             "G": g_count,
-            "C": c_count
+            "C": c_count,
         }
 
     for line in lines:
@@ -67,7 +67,20 @@ def fastx_sampler(fasta_content: str, percent: float, seed: int | None = None) -
 
 def blast_output(blast_tabular_content: str) -> list[dict[str, str | float | int]]:
     """Parsa righe in formato tabulare standard BLAST (outfmt 6) in dizionari strutturati."""
-    columns = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore"]
+    columns = [
+        "qseqid",
+        "sseqid",
+        "pident",
+        "length",
+        "mismatch",
+        "gapopen",
+        "qstart",
+        "qend",
+        "sstart",
+        "send",
+        "evalue",
+        "bitscore",
+    ]
     parsed_results = []
 
     for line in blast_tabular_content.splitlines():
@@ -77,8 +90,11 @@ def blast_output(blast_tabular_content: str) -> list[dict[str, str | float | int
         if len(parts) >= 12:
             row = {
                 columns[i]: (
-                    float(parts[i]) if i in (2, 10, 11) else (int(parts[i]) if i in (3, 4, 5, 6, 7, 8, 9) else parts[i])
-                ) for i in range(12)
+                    float(parts[i])
+                    if i in (2, 10, 11)
+                    else (int(parts[i]) if i in (3, 4, 5, 6, 7, 8, 9) else parts[i])
+                )
+                for i in range(12)
             }
             parsed_results.append(row)
 

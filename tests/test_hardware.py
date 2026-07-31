@@ -15,6 +15,7 @@ async def test_hardware_detect_amd_rocm():
         result = await HardwareDetectionService.detect()
         assert result == "GPU_AMD_ROCm"
 
+
 @pytest.mark.asyncio
 async def test_hardware_detect_nvidia_cuda():
     async def mock_check(binary: str) -> bool:
@@ -23,6 +24,7 @@ async def test_hardware_detect_nvidia_cuda():
     with patch.object(HardwareDetectionService, "_check", side_effect=mock_check):
         result = await HardwareDetectionService.detect()
         assert result == "GPU_NVIDIA_CUDA"
+
 
 @pytest.mark.asyncio
 async def test_hardware_detect_cpu_only():

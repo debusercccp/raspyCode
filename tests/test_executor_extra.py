@@ -76,21 +76,27 @@ async def test_executor_orf_finder_tool():
 
 @pytest.mark.asyncio
 async def test_executor_how_many_seq_tool():
-    response = await run_tool("biotoolkit_how_many_seq", {"args": [">a\nATG\n>b\nCGT\n"]})
+    response = await run_tool(
+        "biotoolkit_how_many_seq", {"args": [">a\nATG\n>b\nCGT\n"]}
+    )
     assert response.is_error is False
     assert "2" in response.result_output
 
 
 @pytest.mark.asyncio
 async def test_executor_longest_shared_seq_tool():
-    response = await run_tool("biotoolkit_longest_shared_seq", {"args": ["GATTACA", "TACAG"]})
+    response = await run_tool(
+        "biotoolkit_longest_shared_seq", {"args": ["GATTACA", "TACAG"]}
+    )
     assert response.is_error is False
     assert "TACA" in response.result_output
 
 
 @pytest.mark.asyncio
 async def test_executor_genome_assembly_tool():
-    response = await run_tool("biotoolkit_genome_assembly", {"args": ["ATG", "TGC", "GCA"]})
+    response = await run_tool(
+        "biotoolkit_genome_assembly", {"args": ["ATG", "TGC", "GCA"]}
+    )
     assert response.is_error is False
     assert "ATGCA" in response.result_output
 
@@ -128,7 +134,11 @@ async def test_executor_run_loop_processes_events_from_bus():
     task = asyncio.create_task(executor.run())
     try:
         await bus.publish(
-            LLMToolCallEvent(call_id="loop", tool_name="biotoolkit_gc_content", arguments={"args": ["GGCC"]})
+            LLMToolCallEvent(
+                call_id="loop",
+                tool_name="biotoolkit_gc_content",
+                arguments={"args": ["GGCC"]},
+            )
         )
         response = await asyncio.wait_for(get_tool_result(result_queue), timeout=2)
         assert response.is_error is False

@@ -23,7 +23,7 @@ def longest_shared_seq(seqs: list[str]) -> str:
     length = len(shortest)
     for w in range(length, 0, -1):
         for i in range(length - w + 1):
-            kmer = shortest[i:i+w]
+            kmer = shortest[i : i + w]
             if all(kmer in s for s in seqs):
                 return kmer
     return ""

@@ -20,6 +20,7 @@ FASTA = ">seq1 primo record\nATGCGATCG\n>seq2 secondo record\nATGGGGCCC\n"
 
 # --- assembly.py -------------------------------------------------------
 
+
 def test_orf_finder_finds_open_reading_frames():
     assert orf_finder("MKV*MTT*") == ["MKV*", "MTT*"]
     assert orf_finder("kv") == []
@@ -41,6 +42,7 @@ def test_genome_assembly_greedy_overlap():
 
 
 # --- io_utils.py ---------------------------------------------------------
+
 
 def test_seq_magic_computes_stats_per_record():
     stats = seq_magic(FASTA)
@@ -71,6 +73,7 @@ def test_blast_output_parses_tabular_rows():
 
 # --- search.py -----------------------------------------------------------
 
+
 def test_motif_find_returns_1_based_positions():
     assert motif_find("GC", "ATGCGC") == [3, 5]
     assert motif_find("XX", "ATGC") == []
@@ -96,6 +99,7 @@ def test_grep_fastx_filters_matching_records():
 
 # --- synthesis.py ----------------------------------------------------------
 
+
 def test_synth_seq_is_deterministic_with_seed_and_respects_length():
     training = ">t\n" + "ATGCATGCATGCATGC" * 4
     seq_a = synth_seq(training, k=3, length=20, seed=42)
@@ -109,6 +113,7 @@ def test_synth_seq_falls_back_on_short_training_data():
 
 
 # --- sequence.py (righe residue non coperte da test_biocli.py) -------------
+
 
 def test_rna_to_prot_stops_at_first_stop_codon():
     assert rna_to_prot("AUGUUUUAA") == "MF"

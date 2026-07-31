@@ -45,11 +45,14 @@ async def test_run_publishes_enriched_chat_event_on_success(rag_service):
     result_queue = rag_service.bus.subscribe()
 
     rag_service.insert_document(
-        "il GC content e' la percentuale di G e C", np.array([1.0, 0.0], dtype=np.float32)
+        "il GC content e' la percentuale di G e C",
+        np.array([1.0, 0.0], dtype=np.float32),
     )
 
     with patch.object(
-        rag_service, "get_embedding", new=AsyncMock(return_value=np.array([1.0, 0.0], dtype=np.float32))
+        rag_service,
+        "get_embedding",
+        new=AsyncMock(return_value=np.array([1.0, 0.0], dtype=np.float32)),
     ):
         await rag_service.bus.publish(UserChatEvent(query="Cos'e' il GC content?"))
         # esegue un solo giro di loop invece di await rag_service.run() infinito
@@ -59,7 +62,9 @@ async def test_run_publishes_enriched_chat_event_on_success(rag_service):
         query_emb = await rag_service.get_embedding(event.query)
         top_docs = rag_service.search_similar(query_emb, top_k=2)
         context_text = "\n".join(f"- {d[0]} (score: {d[1]:.2f})" for d in top_docs)
-        enriched_prompt = f"Contesto RAG:\n{context_text}\n\nDomanda utente: {event.query}"
+        enriched_prompt = (
+            f"Contesto RAG:\n{context_text}\n\nDomanda utente: {event.query}"
+        )
         await rag_service.bus.publish(EnrichedChatEvent(prompt=enriched_prompt))
 
     published = await result_queue.get()
@@ -76,7 +81,11 @@ async def test_run_loop_handles_ollama_failure_with_fallback():
     service = RAGService(bus, db_path=":memory:")
     result_queue = bus.subscribe()
 
-    with patch.object(service, "get_embedding", new=AsyncMock(side_effect=RuntimeError("Ollama offline"))):
+    with patch.object(
+        service,
+        "get_embedding",
+        new=AsyncMock(side_effect=RuntimeError("Ollama offline")),
+    ):
         import asyncio
 
         task = asyncio.create_task(service.run())

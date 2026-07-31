@@ -12,6 +12,7 @@ async def get_tool_result(queue) -> ToolResultEvent:
         if isinstance(event, ToolResultEvent):
             return event
 
+
 @pytest.mark.asyncio
 async def test_executor_unauthorized_command():
     bus = EventBus()
@@ -19,9 +20,7 @@ async def test_executor_unauthorized_command():
     result_queue = bus.subscribe()
 
     forbidden_event = LLMToolCallEvent(
-        call_id="123",
-        tool_name="system_run_cmd",
-        arguments={"command": "rm -rf /"}
+        call_id="123", tool_name="system_run_cmd", arguments={"command": "rm -rf /"}
     )
 
     await executor._execute(forbidden_event)
@@ -33,6 +32,7 @@ async def test_executor_unauthorized_command():
     assert response.is_error is True
     assert "non in allow-list" in response.result_output
 
+
 @pytest.mark.asyncio
 async def test_executor_unknown_tool():
     bus = EventBus()
@@ -40,9 +40,7 @@ async def test_executor_unknown_tool():
     result_queue = bus.subscribe()
 
     unknown_event = LLMToolCallEvent(
-        call_id="456",
-        tool_name="biotoolkit_non_esistente",
-        arguments={"args": []}
+        call_id="456", tool_name="biotoolkit_non_esistente", arguments={"args": []}
     )
 
     await executor._execute(unknown_event)
@@ -51,6 +49,7 @@ async def test_executor_unknown_tool():
 
     assert response.is_error is True
     assert "Tool non riconosciuto" in response.result_output
+
 
 @pytest.mark.asyncio
 async def test_executor_genetic_sim():
@@ -61,7 +60,7 @@ async def test_executor_genetic_sim():
     sim_event = LLMToolCallEvent(
         call_id="789",
         tool_name="biotoolkit_run_genetic_sim",
-        arguments={"generations": 500}
+        arguments={"generations": 500},
     )
 
     await executor._execute(sim_event)

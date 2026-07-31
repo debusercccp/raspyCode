@@ -7,6 +7,7 @@ from raspyCode.core.events import Event, StatusEvent, UserMessageEvent
 
 # --- EventBus: sottoscrizione tipizzata, unsubscribe, backpressure --------
 
+
 @pytest.mark.asyncio
 async def test_subscribe_without_args_receives_everything_backward_compat():
     bus = EventBus()
@@ -66,6 +67,7 @@ async def test_publish_applies_backpressure_when_queue_full():
 
 # --- Gateway: timeout HTTP configurato, non infinito ----------------------
 
+
 def test_gateway_http_timeout_is_not_infinite():
     from raspyCode.services.llm_gateway_service import OLLAMA_HTTP_TIMEOUT
 
@@ -77,6 +79,7 @@ def test_gateway_http_timeout_is_not_infinite():
 
 
 # --- Gateway: limite alla history ------------------------------------------
+
 
 def test_history_trim_preserves_system_message_and_caps_length():
     from raspyCode.core.event_bus import EventBus as Bus
@@ -113,6 +116,7 @@ def test_history_trim_is_noop_when_under_limit():
 
 # --- ConnectivityService: lifecycle di _watch_config -----------------------
 
+
 @pytest.mark.asyncio
 async def test_connectivity_watch_config_task_is_cancelled_on_run_cancel():
     from unittest.mock import AsyncMock, patch
@@ -133,13 +137,15 @@ async def test_connectivity_watch_config_task_is_cancelled_on_run_cancel():
         # Nessuna task orfana rimasta viva dopo la cancellazione di run().
         all_tasks = asyncio.all_tasks()
         watch_related = [
-            t for t in all_tasks
+            t
+            for t in all_tasks
             if "ConnectivityService._watch_config" in repr(t) and not t.done()
         ]
         assert watch_related == []
 
 
 # --- system_run_cmd: hardening path e output size --------------------------
+
 
 @pytest.mark.asyncio
 async def test_system_run_cmd_rejects_path_outside_allowed_root(tmp_path):
@@ -162,9 +168,7 @@ async def test_system_run_cmd_rejects_home_expansion_outside_root():
     bus = EventBus()
     executor = ToolExecutorService(bus)
 
-    result, is_error = await executor._run_system_cmd(
-        {"command": "cat ~/.ssh/id_rsa"}
-    )
+    result, is_error = await executor._run_system_cmd({"command": "cat ~/.ssh/id_rsa"})
     assert is_error is True
     assert "non consentito" in result
 

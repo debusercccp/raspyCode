@@ -12,13 +12,16 @@ def executor_service():
     bus = EventBus()
     return ToolExecutorService(bus)
 
+
 @pytest.mark.asyncio
 async def test_system_cmd_rejected_not_in_allowlist(executor_service):
     # rm non è nell'allowlist [ls, wc, cat, pwd, free, head, tail, uname, whoami, df]
     event = LLMToolCallEvent(
         call_id="123",
         tool_name="system_run_cmd",
-        arguments={"command": "rm -rf /"}  # Corretto: 'arguments' invece di 'args', e formato dict!
+        arguments={
+            "command": "rm -rf /"
+        },  # Corretto: 'arguments' invece di 'args', e formato dict!
     )
 
     # Eseguiamo direttamente il bypass testando la risposta del comando
@@ -26,6 +29,7 @@ async def test_system_cmd_rejected_not_in_allowlist(executor_service):
 
     assert is_error is True
     assert "non in allow-list" in result
+
 
 @pytest.mark.asyncio
 @patch("raspyCode.services.tool_executor_service.asyncio.create_subprocess_exec")

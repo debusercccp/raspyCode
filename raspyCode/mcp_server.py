@@ -10,6 +10,7 @@ from raspyCode.bioCli.sequence import dna_to_rna, gc_content, rev_comp
 # Inizializza il server MCP per la bioinformatica
 mcp = FastMCP("RaspyCode-BioToolkit")
 
+
 @mcp.tool()
 def calculate_gc_content(sequence: str) -> str:
     """Calcola la percentuale del contenuto GC in una sequenza DNA/RNA."""
@@ -19,6 +20,7 @@ def calculate_gc_content(sequence: str) -> str:
     except Exception as e:
         return f"Errore nel calcolo del GC Content: {str(e)}"
 
+
 @mcp.tool()
 def reverse_complement(sequence: str) -> str:
     """Restituisce il filamento complementare inverso di una sequenza DNA."""
@@ -26,6 +28,7 @@ def reverse_complement(sequence: str) -> str:
         return rev_comp(sequence)
     except Exception as e:
         return f"Errore nel calcolo del Reverse Complement: {str(e)}"
+
 
 @mcp.tool()
 def translate_dna_to_rna(sequence: str) -> str:
@@ -35,6 +38,7 @@ def translate_dna_to_rna(sequence: str) -> str:
     except Exception as e:
         return f"Errore nella trascrizione DNA->RNA: {str(e)}"
 
+
 if __name__ == "__main__":
     # Avvia il server in modalità standard input/output (JSON-RPC)
-    mcp.run(transport='stdio')
+    mcp.run(transport="stdio")

@@ -1,4 +1,5 @@
 """Rilevamento hardware di inferenza disponibile sul nodo corrente."""
+
 import asyncio
 
 # Timeout per ogni probe di binario: rocm-smi/nvidia-smi non dovrebbero mai

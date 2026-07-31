@@ -20,7 +20,9 @@ def synth_seq(training_fasta: str, k: int, length: int, seed: int | None = None)
 
     # 1. Parsing delle sequenze di addestramento
     lines = training_fasta.splitlines()
-    full_text = "".join(line.strip().upper() for line in lines if line and not line.startswith(">"))
+    full_text = "".join(
+        line.strip().upper() for line in lines if line and not line.startswith(">")
+    )
 
     if len(full_text) <= k:
         # Training set troppo corto per costruire una catena di Markov:
@@ -34,8 +36,8 @@ def synth_seq(training_fasta: str, k: int, length: int, seed: int | None = None)
     # 2. Costruzione della catena di Markov
     counts = defaultdict(Counter)
     for i in range(len(full_text) - k):
-        context = full_text[i:i+k]
-        next_base = full_text[i+k]
+        context = full_text[i : i + k]
+        next_base = full_text[i + k]
         counts[context][next_base] += 1
 
     chain = {}

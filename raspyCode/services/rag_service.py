@@ -14,7 +14,13 @@ class RAGService:
     Genera embedding via Ollama (nomic-embed-text) e arricchisce il contesto
     degli eventi diretti all'LLM.
     """
-    def __init__(self, bus: EventBus, db_path: str = "raspycode_rag.db", ollama_host: str = "http://10.42.0.2:11434"):
+
+    def __init__(
+        self,
+        bus: EventBus,
+        db_path: str = "raspycode_rag.db",
+        ollama_host: str = "http://10.42.0.2:11434",
+    ):
         self.bus = bus
         self.db_path = db_path
         self.ollama_host = ollama_host
@@ -41,7 +47,7 @@ class RAGService:
             response = await client.post(
                 f"{self.ollama_host}/api/embeddings",
                 json={"model": self.model_name, "prompt": text},
-                timeout=10.0
+                timeout=10.0,
             )
             response.raise_for_status()
             data = response.json()
@@ -53,11 +59,13 @@ class RAGService:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO documents (content, embedding) VALUES (?, ?)",
-                (content, embedding.tobytes())
+                (content, embedding.tobytes()),
             )
             conn.commit()
 
-    def search_similar(self, query_emb: np.ndarray, top_k: int = 3) -> List[Tuple[str, float]]:
+    def search_similar(
+        self, query_emb: np.ndarray, top_k: int = 3
+    ) -> List[Tuple[str, float]]:
         """
         Calcola la similarità del coseno tra la query e i documenti in SQLite.
         Utilizza numpy per efficienza su ARM64 senza richiedere estensioni esterne complesse.
@@ -90,7 +98,9 @@ class RAGService:
                     query_emb = await self.get_embedding(event.query)
                     top_docs = self.search_similar(query_emb, top_k=2)
 
-                    context_text = "\n".join([f"- {doc[0]} (score: {doc[1]:.2f})" for doc in top_docs])
+                    context_text = "\n".join(
+                        [f"- {doc[0]} (score: {doc[1]:.2f})" for doc in top_docs]
+                    )
 
                     # Pubblica un nuovo evento arricchito per LLMGatewayService
                     enriched_prompt = f"Contesto RAG:\n{context_text}\n\nDomanda utente: {event.query}"
