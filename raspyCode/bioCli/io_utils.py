@@ -43,8 +43,7 @@ def seq_magic(fasta_content: str) -> dict[str, dict[str, float | int]]:
 
 def fastx_sampler(fasta_content: str, percent: float, seed: int | None = None) -> str:
     """Campiona probabilisticamente i record di un file FASTA in base a una percentuale."""
-    if seed is not None:
-        random.seed(seed)
+    rng = random.Random(seed)
 
     lines = fasta_content.splitlines()
     sampled_records = []
@@ -56,7 +55,7 @@ def fastx_sampler(fasta_content: str, percent: float, seed: int | None = None) -
             if current_record and keep_record:
                 sampled_records.append("\n".join(current_record))
             current_record = [line]
-            keep_record = random.random() * 100.0 <= percent
+            keep_record = rng.random() * 100.0 <= percent
         else:
             current_record.append(line)
 

@@ -24,6 +24,27 @@ SYSTEM_PROMPT = (
     "Rispondi in italiano, in modo conciso e tecnico."
 )
 
+# Margine di sicurezza sull'attesa del risultato di un tool: ToolExecutorService
+# applica gia' un proprio timeout (10s, vedi tool_executor_service.py) e
+# pubblica SEMPRE un ToolResultEvent (successo o errore). Questo timeout qui
+# e' una rete di sicurezza per il caso in cui l'executor non risponda affatto
+# (crash, cancellazione, tool_name non riconosciuto che pero' non pubblica -
+# scenario che oggi non si verifica ma che non va assunto per sempre vero):
+# senza, il Gateway resterebbe bloccato su `await fut` per sempre.
+GATEWAY_TOOL_TIMEOUT_SECONDS = 15.0
+
+# httpx.AsyncClient(timeout=None) e' timeout infinito: se Ollama si blocca
+# o smette di rispondere a meta' streaming, il Gateway resta appeso per
+# sempre. `read` resta generoso perche' l'inferenza su Pi puo' essere lenta,
+# ma non deve essere illimitato.
+OLLAMA_HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=300.0, write=10.0, pool=10.0)
+
+# Limite alla history della conversazione: senza, cresce per sempre e il
+# prompt inviato a ogni turno diventa via via piu' grande (piu' lento, piu'
+# RAM, rischio di superare il context window del modello). Il messaggio di
+# sistema viene sempre preservato; si trimma solo il resto.
+MAX_HISTORY_MESSAGES = 40
+
 _BIOTOOLKIT_TOOL_NAMES = [
     "biotoolkit_gc_content", "biotoolkit_rev_comp", "biotoolkit_dna_to_rna",
     "biotoolkit_rna_to_prot", "biotoolkit_base_count", "biotoolkit_hamming_dist",
@@ -95,7 +116,20 @@ class LLMGatewayService:
         self.model: str | None = model
         self.history: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
         self._pending_tool_calls: dict[str, asyncio.Future[ToolResultEvent]] = {}
-        self._client = httpx.AsyncClient(timeout=None)
+        self._client = httpx.AsyncClient(timeout=OLLAMA_HTTP_TIMEOUT)
+
+    def _trim_history(self) -> None:
+        """Limita la history a MAX_HISTORY_MESSAGES messaggi, preservando
+        sempre il/i messaggio/i di sistema. Chiamato solo all'inizio di un
+        nuovo turno (_converse()), mai a meta' di una sequenza di tool call:
+        troncare tra un messaggio assistant con tool_calls e i corrispondenti
+        messaggi tool romperebbe la struttura attesa dal protocollo chat."""
+        if len(self.history) <= MAX_HISTORY_MESSAGES:
+            return
+        system_msgs = [m for m in self.history if m.get("role") == "system"]
+        other_msgs = [m for m in self.history if m.get("role") != "system"]
+        keep = max(MAX_HISTORY_MESSAGES - len(system_msgs), 0)
+        self.history = system_msgs + other_msgs[-keep:]
 
     async def run(self) -> None:
         try:
@@ -136,6 +170,7 @@ class LLMGatewayService:
 
     async def _converse(self) -> None:
         await self._bus.publish(StatusEvent(text="Interrogazione modello...", level="info"))
+        self._trim_history()
 
         while True:
             payload = {
@@ -183,25 +218,68 @@ class LLMGatewayService:
                 {"role": "assistant", "content": assistant_content, "tool_calls": tool_calls}
             )
 
-            for call in tool_calls:
-                call_id = call.get("id") or str(uuid.uuid4())
+            await self._handle_tool_calls(tool_calls)
+
+    async def _handle_tool_calls(self, tool_calls: list[dict[str, Any]]) -> None:
+        """Esegue ogni tool call pubblicando LLMToolCallEvent e attendendo il
+        ToolResultEvent corrispondente, poi appende il risultato a self.history.
+
+        Isolato da _converse() per essere testabile senza dover mockare lo
+        streaming HTTP verso Ollama: basta costruire una lista di tool_calls
+        e un EventBus (reale o con un finto ToolExecutor collegato).
+        """
+        for call in tool_calls:
+            call_id = call.get("id") or str(uuid.uuid4())
+
+            # Parsing difensivo: una risposta malformata dal modello (JSON
+            # non valido negli argomenti, 'function' mancante, ecc.) non
+            # deve propagare un'eccezione non gestita che ucciderebbe
+            # silenziosamente l'intero _converse()/run() del Gateway.
+            try:
                 fn = call["function"]
+                tool_name = fn["name"]
                 args = fn.get("arguments", {})
                 if isinstance(args, str):
                     args = json.loads(args or "{}")
-
-                fut: asyncio.Future[ToolResultEvent] = asyncio.get_running_loop().create_future()
-                self._pending_tool_calls[call_id] = fut
-
-                await self._bus.publish(
-                    LLMToolCallEvent(call_id=call_id, tool_name=fn["name"], arguments=args)
-                )
-
-                result_event = await fut
+            except (KeyError, TypeError, json.JSONDecodeError) as exc:
                 self.history.append(
                     {
                         "role": "tool",
                         "tool_call_id": call_id,
-                        "content": result_event.result_output,
+                        "content": f"Tool call malformato dal modello, ignorato: {exc}",
                     }
                 )
+                await self._bus.publish(
+                    StatusEvent(text=f"Tool call malformato ignorato: {exc}", level="warning")
+                )
+                continue
+
+            fut: asyncio.Future[ToolResultEvent] = asyncio.get_running_loop().create_future()
+            self._pending_tool_calls[call_id] = fut
+
+            try:
+                await self._bus.publish(
+                    LLMToolCallEvent(call_id=call_id, tool_name=tool_name, arguments=args)
+                )
+                result_event = await asyncio.wait_for(
+                    fut, timeout=GATEWAY_TOOL_TIMEOUT_SECONDS
+                )
+                tool_output = result_event.result_output
+            except asyncio.TimeoutError:
+                tool_output = (
+                    f"Timeout: nessuna risposta dal Tool Executor per "
+                    f"'{tool_name}' entro {GATEWAY_TOOL_TIMEOUT_SECONDS:.0f}s."
+                )
+            finally:
+                # Va rimosso sempre: se non arriva mai un ToolResultEvent per
+                # questo call_id, un entry orfano in _pending_tool_calls
+                # resterebbe in memoria per sempre.
+                self._pending_tool_calls.pop(call_id, None)
+
+            self.history.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": tool_output,
+                }
+            )

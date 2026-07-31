@@ -46,9 +46,10 @@ async def main() -> None:
     hw_mode = await HardwareDetectionService.detect()
     app.hw_mode = hw_mode
 
-    asyncio.create_task(splash_screen_sequence(bus))
+    splash_task = asyncio.create_task(splash_screen_sequence(bus))
 
     tasks = [asyncio.create_task(coro) for coro in services]
+    tasks.append(splash_task)
 
     await app.run_async()
 

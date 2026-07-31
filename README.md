@@ -156,11 +156,19 @@ In più:
 
 * `biotoolkit_run_genetic_sim`: simulazione genetica con seed random isolato
 per chiamata (istanziato dentro l'handler, mai a livello di modulo).
-* `system_run_cmd`: esecuzione di comandi di sistema, **limitata a
-un'allow-list** (`ls, cat, df, free, uname, whoami, pwd, head, tail, wc`)
-in `tool_executor_service.SYSTEM_CMD_ALLOWLIST`. Estendere solo con binari
-read-only: dare shell libera a un LLM resta un vettore di rischio anche
-in un agente locale.
+* `system_run_cmd`: esecuzione di comandi di sistema, limitata su due assi
+  indipendenti:
+  - **quale programma**: allow-list (`ls, cat, df, free, uname, whoami, pwd,
+    head, tail, wc`) in `tool_executor_service.SYSTEM_CMD_ALLOWLIST`. Estendere
+    solo con binari read-only.
+  - **quali dati**: qualunque argomento non-flag (es. il file passato a `cat`)
+    deve risolvere dentro la directory di lavoro corrente
+    (`SYSTEM_CMD_ALLOWED_ROOT`), altrimenti viene rifiutato — l'allow-list da
+    sola protegge il binario ma non impedirebbe `cat ~/.ssh/id_rsa` o
+    `cat /etc/shadow`. Output limitato a `MAX_OUTPUT_BYTES` (64KB) e timeout
+    di `TOOL_TIMEOUT_SECONDS` (10s, kill effettivo del processo allo scadere).
+  Dare shell libera a un LLM resta un vettore di rischio anche in un agente
+  locale: questi limiti riducono ma non eliminano la superficie d'attacco.
 
 ## Pulizia __pycache__
 

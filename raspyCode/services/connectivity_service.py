@@ -1,5 +1,6 @@
 """ConnectivityService: healthcheck periodico verso Ollama sul Raspberry Pi."""
 import asyncio
+import contextlib
 
 import httpx
 
@@ -17,11 +18,19 @@ class ConnectivityService:
         self._pi_ip = pi_ip
 
     async def run(self) -> None:
-        asyncio.create_task(self._watch_config())
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            while True:
-                await self._check_once(client)
-                await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+        watch_task = asyncio.create_task(self._watch_config())
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                while True:
+                    await self._check_once(client)
+                    await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+        finally:
+            # Se run() viene cancellato (shutdown dell'app) o esce per
+            # qualunque motivo, _watch_config() non deve restare orfano
+            # a girare per sempre in background, ancora sottoscritto al bus.
+            watch_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watch_task
 
     async def _watch_config(self) -> None:
         while True:
