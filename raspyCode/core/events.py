@@ -90,3 +90,13 @@ class EnrichedChatEvent(Event):
     """Prompt arricchito col contesto RAG, prodotto da RAGService per il gateway LLM."""
 
     prompt: str
+
+
+@dataclass
+class SystemStatsEvent(Event):
+    """Statistiche hardware periodiche del nodo (Pi o laptop)."""
+
+    cpu_load_1min: float
+    cpu_temp_c: float | None
+    mem_used_mb: float
+    mem_total_mb: float

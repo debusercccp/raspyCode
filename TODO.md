@@ -58,28 +58,47 @@ eventuale training).
 
 ## 4. Raspberry Pi — display TFT (opzionale, solo se collegato)
 
+> **Nota:** non usare gli script forniti dai produttori (es. `LCD35-show` di
+> Waveshare). Su Raspberry Pi OS Lite 64-bit (Debian 13 Trixie) questi script
+> sovrascrivono `/boot/firmware/config.txt` con parametri 32-bit incompatibili
+> col kernel ARM64 e possono bloccare il boot; inoltre il `.dtbo` che si
+> aspettano spesso non è presente in `/boot/firmware/overlays/`, quindi
+> `/dev/fb1` non viene mai creato. Il kernel include già un overlay nativo
+> (`piscreen`) compatibile con i controller ILI9486/ILI9341 via SPI — è la
+> via pulita e va usata al posto dei driver di terze parti.
+
 - [ ] Collegare fisicamente il TFT 3.5" ILI9486 sui pin SPI/GPIO
-- [ ] Editare `/boot/firmware/config.txt`:
-  ```
+- [ ] Editare `/boot/firmware/config.txt` (`sudo nano /boot/firmware/config.txt`),
+      assicurandosi che SPI sia abilitato e aggiungendo l'overlay nativo sotto `[all]`:
+```ini
   dtparam=spi=on
-  dtoverlay=tft35a:rotate=90
-  ```
+
+  [all]
+  dtoverlay=piscreen,speed=16000000,rotate=90
+```
+  (`speed=16000000` = 16 MHz, per stabilità del segnale senza artefatti;
+  `rotate=90` = landscape — valori accettati: `0`, `90`, `180`, `270`)
 - [ ] `sudo reboot`
-- [ ] Verificare che compaia `/dev/fb1`: `ls -la /dev/fb1`
+- [ ] Verificare che compaia `/dev/fb1`: `ls -la /dev/fb*` — atteso `fb0`
+      (HDMI) e `fb1` (TFT SPI), entrambi `crw-rw---- root video`
 - [ ] `sudo usermod -a -G spi,gpio,video noya`
-- [ ] Logout/login (o reboot) perche' i gruppi abbiano effetto
+- [ ] `newgrp video` (o logout/login/reboot) perché il gruppo abbia effetto
+      nella sessione corrente
+- [ ] Test rumore casuale su `/dev/fb1` (risoluzione 320x480, RGB565):
+```bash
+  python3 -c 'import numpy as np; open("/dev/fb1", "wb").write((np.random.rand(320, 480, 1) * 65535).astype("<u2").tobytes())'
+```
+  Esito positivo: pixel colorati casuali ("effetto neve") sullo schermo.
+- [ ] Test reset a nero:
+```bash
+  python3 -c 'open("/dev/fb1", "wb").write(bytes(320 * 480 * 2))'
+```
+  Esito positivo: schermo torna nero immediatamente.
 - [ ] Installare le dipendenze di rendering sul Pi:
-  ```bash
+```bash
   pip install --break-system-packages pillow numpy
   # oppure, se raspyCode gira anche sul Pi: pipx install ".[tft]"
-  ```
-- [ ] Test rapido di scrittura sul framebuffer (senza passare da raspyCode):
-  ```python
-  import numpy as np
-  buf = (np.random.rand(320, 480, 1) * 65535).astype("<u2").tobytes()
-  open("/dev/fb1", "wb").write(buf)
-  ```
-  Se lo schermo mostra rumore colorato, il framebuffer funziona.
+```
 
 ## 5. Laptop — installazione raspyCode
 

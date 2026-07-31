@@ -6,12 +6,24 @@ via numpy). Se /dev/fb1 non esiste (es. in esecuzione sul laptop, o Pi
 senza HAT collegato) il servizio si disabilita silenziosamente e continua
 a drenare la coda per non accumulare memoria, senza mai far crashare
 il resto dell'agente.
+
+A differenza della versione precedente, questo servizio mantiene uno
+stato (ultima query utente, ultime statistiche di sistema, ultimo status)
+e ridisegna l'intero schermo componendo le tre sezioni, invece di
+processare ogni evento in isolamento e perdere il resto.
 """
 
 from pathlib import Path
 
 from ..core.event_bus import EventBus
-from ..core.events import Event, LLMToolCallEvent, StatusEvent, ToolResultEvent
+from ..core.events import (
+    Event,
+    LLMToolCallEvent,
+    StatusEvent,
+    SystemStatsEvent,
+    ToolResultEvent,
+    UserMessageEvent,
+)
 
 FB_PATH = "/dev/fb1"
 FB_WIDTH = 480
@@ -23,12 +35,24 @@ _LEVEL_STYLE = {
     "error": ((60, 10, 10), (255, 80, 80)),
 }
 
+_QUERY_MAX_CHARS = 120  # troncamento per non far traboccare il canvas 480x320
+
 
 class TFTDisplayService:
     def __init__(self, bus: EventBus) -> None:
         self._queue = bus.subscribe()
         self._enabled = Path(FB_PATH).exists()
         self._font = None
+        self._font_small = None
+
+        # Stato mantenuto tra un render e l'altro: senza questo, ogni
+        # evento sovrascriveva tutto lo schermo perdendo query/stats
+        # precedenti non correlate all'evento appena arrivato.
+        self._last_query: str = ""
+        self._last_status_text: str = "In attesa..."
+        self._last_status_level: str = "info"
+        self._last_stats: SystemStatsEvent | None = None
+
         if self._enabled:
             self._init_render_deps()
 
@@ -44,8 +68,12 @@ class TFTDisplayService:
                 self._font = ImageFont.truetype(
                     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 18
                 )
+                self._font_small = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 14
+                )
             except Exception:
                 self._font = ImageFont.load_default()
+                self._font_small = self._font
         except ImportError:
             # Pillow/numpy assenti: disabilita il rendering, non crashare.
             self._enabled = False
@@ -58,21 +86,71 @@ class TFTDisplayService:
             self._queue.task_done()
 
     def _handle(self, event: Event) -> None:
-        if isinstance(event, StatusEvent):
-            self._render(event.text, event.level)
-        elif isinstance(event, LLMToolCallEvent):
-            self._render(f"[TOOL RUNNING]\n{event.tool_name}...", "info")
-        elif isinstance(event, ToolResultEvent):
-            level = "error" if event.is_error else "info"
-            preview = event.result_output[:150]
-            self._render(f"[{event.tool_name}]\n{preview}", level)
+        redraw = False
 
-    def _render(self, text: str, level: str) -> None:
-        bg, fg = _LEVEL_STYLE.get(level, _LEVEL_STYLE["info"])
+        if isinstance(event, UserMessageEvent):
+            self._last_query = event.content[:_QUERY_MAX_CHARS]
+            redraw = True
+        elif isinstance(event, StatusEvent):
+            self._last_status_text = event.text
+            self._last_status_level = event.level
+            redraw = True
+        elif isinstance(event, LLMToolCallEvent):
+            self._last_status_text = f"[TOOL RUNNING]\n{event.tool_name}..."
+            self._last_status_level = "info"
+            redraw = True
+        elif isinstance(event, ToolResultEvent):
+            self._last_status_level = "error" if event.is_error else "info"
+            preview = event.result_output[:150]
+            self._last_status_text = f"[{event.tool_name}]\n{preview}"
+            redraw = True
+        elif isinstance(event, SystemStatsEvent):
+            self._last_stats = event
+            redraw = True
+
+        if redraw:
+            self._render()
+
+    def _stats_line(self) -> str:
+        if self._last_stats is None:
+            return "CPU: -- | RAM: -- | Temp: --"
+        s = self._last_stats
+        temp_str = f"{s.cpu_temp_c:.1f}C" if s.cpu_temp_c is not None else "n/d"
+        return (
+            f"Load: {s.cpu_load_1min:.2f} | "
+            f"RAM: {s.mem_used_mb:.0f}/{s.mem_total_mb:.0f}MB | "
+            f"Temp: {temp_str}"
+        )
+
+    def _render(self) -> None:
+        bg, fg = _LEVEL_STYLE.get(self._last_status_level, _LEVEL_STYLE["info"])
         try:
             img = self._Image.new("RGB", (FB_WIDTH, FB_HEIGHT), bg)
             draw = self._ImageDraw.Draw(img)
-            draw.text((10, 10), text, font=self._font, fill=fg)
+
+            # Sezione query utente (in alto)
+            draw.text(
+                (10, 8),
+                f"noya> {self._last_query}",
+                font=self._font_small,
+                fill=(120, 200, 255),
+            )
+            draw.line((10, 32, FB_WIDTH - 10, 32), fill=(60, 60, 60))
+
+            # Sezione status/tool (centro)
+            draw.text((10, 44), self._last_status_text, font=self._font, fill=fg)
+
+            # Sezione stats (in fondo, sempre visibile)
+            draw.line(
+                (10, FB_HEIGHT - 30, FB_WIDTH - 10, FB_HEIGHT - 30),
+                fill=(60, 60, 60),
+            )
+            draw.text(
+                (10, FB_HEIGHT - 24),
+                self._stats_line(),
+                font=self._font_small,
+                fill=(150, 150, 150),
+            )
 
             arr = self._np.array(img, dtype=self._np.uint8)
             r = (arr[:, :, 0] >> 3).astype(self._np.uint16)

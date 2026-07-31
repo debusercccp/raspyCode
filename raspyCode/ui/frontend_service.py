@@ -85,7 +85,12 @@ class SettingsScreen(ModalScreen[None]):
             self.app.publish_from_ui(PiConfigEvent(pi_ip=event.value.strip()))
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        model_name = str(event.item.query_one(Label).renderable)
+        if event.list_view.id != "model-list":
+            return
+        index = event.list_view.index
+        if index is None or not (0 <= index < len(self._models)):
+            return
+        model_name = self._models[index]
         self.app.publish_from_ui(ModelSelectedEvent(model=model_name))  # type: ignore[attr-defined]
         self.dismiss()
 

@@ -25,37 +25,10 @@ SYSTEM_PROMPT = (
     "pertinente, e system_run_cmd solo per ispezioni di sistema innocue. "
     "Rispondi in italiano, in modo conciso e tecnico."
 )
-
-# Margine di sicurezza sull'attesa del risultato di un tool: ToolExecutorService
-# applica gia' un proprio timeout (10s per i tool bio in-process, 15s per
-# system_run_cmd - vedi raspyCode/tools/) e pubblica SEMPRE un ToolResultEvent
-# (successo o errore). Questo timeout qui e' una rete di sicurezza per il
-# caso in cui l'executor non risponda affatto (crash, cancellazione, tool_name
-# non riconosciuto che pero' non pubblica - scenario che oggi non si verifica
-# ma che non va assunto per sempre vero): senza, il Gateway resterebbe
-# bloccato su `await fut` per sempre. Tenuto sopra il piu' lento dei timeout
-# lato executor (15s) per lasciare margine anche nel caso peggiore.
 GATEWAY_TOOL_TIMEOUT_SECONDS = 20.0
-
-# httpx.AsyncClient(timeout=None) e' timeout infinito: se Ollama si blocca
-# o smette di rispondere a meta' streaming, il Gateway resta appeso per
-# sempre. `read` resta generoso perche' l'inferenza su Pi puo' essere lenta,
-# ma non deve essere illimitato.
 OLLAMA_HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=300.0, write=10.0, pool=10.0)
-
-# Limite alla history della conversazione: senza, cresce per sempre e il
-# prompt inviato a ogni turno diventa via via piu' grande (piu' lento, piu'
-# RAM, rischio di superare il context window del modello). Il messaggio di
-# sistema viene sempre preservato; si trimma solo il resto.
 MAX_HISTORY_MESSAGES = 24
-
 _DEFAULT_REGISTRY = build_default_registry()
-
-# Derivato dal ToolRegistry condiviso (raspyCode.tools), la stessa fonte di
-# verita' usata da ToolExecutorService per l'esecuzione: prima queste erano
-# due liste separate (questa qui e gli if/elif dell'Executor) tenute
-# allineate manualmente, con il rischio di dichiarare al modello un tool che
-# l'Executor non sapeva eseguire (o viceversa).
 TOOL_SCHEMAS: list[dict[str, Any]] = _DEFAULT_REGISTRY.ollama_schemas()
 
 
@@ -78,11 +51,6 @@ class LLMGatewayService:
         self._client = httpx.AsyncClient(timeout=OLLAMA_HTTP_TIMEOUT)
 
     def _trim_history(self) -> None:
-        """Limita la history a MAX_HISTORY_MESSAGES messaggi, preservando
-        sempre il/i messaggio/i di sistema. Chiamato solo all'inizio di un
-        nuovo turno (_converse()), mai a meta' di una sequenza di tool call:
-        troncare tra un messaggio assistant con tool_calls e i corrispondenti
-        messaggi tool romperebbe la struttura attesa dal protocollo chat."""
         if len(self.history) <= MAX_HISTORY_MESSAGES:
             return
         system_msgs = [m for m in self.history if m.get("role") == "system"]
@@ -136,7 +104,6 @@ class LLMGatewayService:
             StatusEvent(text="Interrogazione modello...", level="info")
         )
         self._trim_history()
-
         while True:
             payload = {
                 "model": self.model,
@@ -146,7 +113,6 @@ class LLMGatewayService:
             }
             assistant_content = ""
             tool_calls: list[dict[str, Any]] = []
-
             try:
                 async with self._client.stream(
                     "POST", f"{self.base_url}/api/chat", json=payload
@@ -165,7 +131,29 @@ class LLMGatewayService:
                             tool_calls.extend(message["tool_calls"])
                         if chunk.get("done"):
                             break
+            except httpx.HTTPStatusError as exc:
+                # 400 da Ollama su /api/chat con 'tools' nel payload significa
+                # quasi sempre che il modello selezionato non supporta il
+                # tool-calling (il suo template non ha un formato per i tool).
+                # Senza questo check l'utente vede solo l'HTTPStatusError
+                # grezzo, che non spiega la causa reale ne' come risolverla.
+                if exc.response.status_code == 400:
+                    msg = (
+                        f"Il modello '{self.model}' ha rifiutato la richiesta (400) - "
+                        "probabilmente non supporta il tool-calling. Prova un "
+                        "modello come qwen3:4b-instruct, qwen3:8b o gemma3 "
+                        "(Ctrl+S per cambiarlo)."
+                    )
+                else:
+                    msg = f"Errore comunicazione Ollama ({self.base_url}): {exc}"
+                await self._bus.publish(StatusEvent(text=msg, level="error"))
+                await self._bus.publish(AssistantTokenEvent(content="", done=True))
+                return
             except httpx.HTTPError as exc:
+                # Va DOPO HTTPStatusError: HTTPStatusError e' una sua
+                # sottoclasse, quindi se questo except venisse prima
+                # intercetterebbe anche i 400 e il ramo sopra non sarebbe
+                # mai raggiunto.
                 await self._bus.publish(
                     StatusEvent(
                         text=f"Errore comunicazione Ollama ({self.base_url}): {exc}",
@@ -174,14 +162,11 @@ class LLMGatewayService:
                 )
                 await self._bus.publish(AssistantTokenEvent(content="", done=True))
                 return
-
             if assistant_content:
                 await self._bus.publish(AssistantTokenEvent(content="", done=True))
-
             if not tool_calls:
                 self.history.append({"role": "assistant", "content": assistant_content})
                 return
-
             self.history.append(
                 {
                     "role": "assistant",
@@ -189,24 +174,11 @@ class LLMGatewayService:
                     "tool_calls": tool_calls,
                 }
             )
-
             await self._handle_tool_calls(tool_calls)
 
     async def _handle_tool_calls(self, tool_calls: list[dict[str, Any]]) -> None:
-        """Esegue ogni tool call pubblicando LLMToolCallEvent e attendendo il
-        ToolResultEvent corrispondente, poi appende il risultato a self.history.
-
-        Isolato da _converse() per essere testabile senza dover mockare lo
-        streaming HTTP verso Ollama: basta costruire una lista di tool_calls
-        e un EventBus (reale o con un finto ToolExecutor collegato).
-        """
         for call in tool_calls:
             call_id = call.get("id") or str(uuid.uuid4())
-
-            # Parsing difensivo: una risposta malformata dal modello (JSON
-            # non valido negli argomenti, 'function' mancante, ecc.) non
-            # deve propagare un'eccezione non gestita che ucciderebbe
-            # silenziosamente l'intero _converse()/run() del Gateway.
             try:
                 fn = call["function"]
                 tool_name = fn["name"]
@@ -227,12 +199,10 @@ class LLMGatewayService:
                     )
                 )
                 continue
-
             fut: asyncio.Future[ToolResultEvent] = (
                 asyncio.get_running_loop().create_future()
             )
             self._pending_tool_calls[call_id] = fut
-
             try:
                 await self._bus.publish(
                     LLMToolCallEvent(
@@ -249,11 +219,7 @@ class LLMGatewayService:
                     f"'{tool_name}' entro {GATEWAY_TOOL_TIMEOUT_SECONDS:.0f}s."
                 )
             finally:
-                # Va rimosso sempre: se non arriva mai un ToolResultEvent per
-                # questo call_id, un entry orfano in _pending_tool_calls
-                # resterebbe in memoria per sempre.
                 self._pending_tool_calls.pop(call_id, None)
-
             self.history.append(
                 {
                     "role": "tool",

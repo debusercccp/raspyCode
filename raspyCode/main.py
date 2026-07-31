@@ -12,6 +12,7 @@ from .core.events import StatusEvent
 from .services.connectivity_service import ConnectivityService
 from .services.hardware import HardwareDetectionService
 from .services.llm_gateway_service import LLMGatewayService
+from .services.system_stats_service import SystemStatsService
 from .services.tool_executor_service import ToolExecutorService
 from .ui.frontend_service import RaspyCodeApp
 
@@ -43,6 +44,9 @@ async def main() -> None:
     connectivity = ConnectivityService(bus, pi_ip=pi_ip)
 
     services = [gateway.run(), executor.run(), connectivity.run()]
+
+    stats_service = SystemStatsService(bus)
+    services.append(stats_service.run())
 
     if _HAS_DISPLAY_MODULE:
         services.append(TFTDisplayService(bus).run())
