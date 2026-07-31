@@ -117,12 +117,19 @@ async def test_executor_unparsable_command():
 
 
 @pytest.mark.asyncio
-async def test_executor_catches_unexpected_exception():
-    # Un intero al posto di una stringa fa fallire seq.upper() dentro gc_content:
-    # esercita il ramo `except Exception` di _execute.
-    response = await run_tool("biotoolkit_gc_content", {"args": [123]})
+async def test_executor_catches_unexpected_exception(monkeypatch):
+    # Mockeriamo un crash del tool nel registry per verificare che l'executor
+    # catturi l'eccezione imprevista e restituisca is_error=True
+    import raspyCode.tools.bio as bio_mod
+
+    def fake_crash(*args, **kwargs):
+        raise RuntimeError("Errore imprevisto simulato per test!")
+
+    monkeypatch.setattr(bio_mod.bioCli, "gc_content", fake_crash)
+
+    response = await run_tool("biotoolkit_gc_content", {"args": ["ATGC"]})
     assert response.is_error is True
-    assert "Errore esecuzione tool" in response.result_output
+    assert "Errore imprevisto simulato" in response.result_output
 
 
 @pytest.mark.asyncio

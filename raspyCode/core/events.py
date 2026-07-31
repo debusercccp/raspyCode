@@ -100,3 +100,10 @@ class SystemStatsEvent(Event):
     cpu_temp_c: float | None
     mem_used_mb: float
     mem_total_mb: float
+
+
+@dataclass
+class ClearHistoryEvent:
+    """Richiede il reset immediato della cronologia di chat nel gateway e nella UI."""
+
+    pass

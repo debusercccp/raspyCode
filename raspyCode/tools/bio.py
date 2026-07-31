@@ -19,11 +19,26 @@ _ARGS_SCHEMA: dict[str, Any] = {
         "args": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Argomenti a riga di comando per lo script.",
+            "description": "Lista di argomenti testuali nell'ordine richiesto dal tool (es. ['ATGC'] o ['pattern', 'sequenza']).",
         }
     },
     "required": ["args"],
 }
+
+
+def _extract_args(arguments: dict[str, Any]) -> list[str]:
+    """Estrae gli argomenti dal payload del tool call.
+
+    Se il modello rispetta lo schema ufficiale passa {'args': ['val1', 'val2']}.
+    I modelli più piccoli (es. Qwen 0.5B/1.5B) spesso ignorano il nome 'args' e
+    passano chiavi semantiche allucinate (es. {'sequence': 'ATGC'} o
+    {'pattern': 'tata', 'sequence': 'ATGC'}). In quel caso facciamo fallback
+    sui valori del dizionario in ordine di inserimento.
+    """
+    if "args" in arguments and isinstance(arguments["args"], list):
+        return [str(x) for x in arguments["args"]]
+    # Fallback elastico per SLM: prendiamo i valori ordinati del dict
+    return [str(v) for v in arguments.values() if v is not None]
 
 
 def _simple_tool(
@@ -35,7 +50,7 @@ def _simple_tool(
     invece di usare questa fabbrica generica."""
 
     async def handler(arguments: dict[str, Any]) -> tuple[str, bool]:
-        args = arguments.get("args", [])
+        args = _extract_args(arguments)
         return formatter(args), False
 
     return ToolDefinition(
@@ -48,7 +63,7 @@ def _simple_tool(
 
 def _grep_fastx_tool() -> ToolDefinition:
     async def handler(arguments: dict[str, Any]) -> tuple[str, bool]:
-        args = arguments.get("args", [])
+        args = _extract_args(arguments)
         if len(args) < 2:
             return "Servono 2 argomenti: pattern, contenuto_fasta", True
         return f"Record trovati: {bioCli.grep_fastx(args[0], args[1])}", False
@@ -63,7 +78,7 @@ def _grep_fastx_tool() -> ToolDefinition:
 
 def _motif_find_tool() -> ToolDefinition:
     async def handler(arguments: dict[str, Any]) -> tuple[str, bool]:
-        args = arguments.get("args", [])
+        args = _extract_args(arguments)
         if len(args) < 2:
             return "Servono 2 argomenti: pattern, sequenza", True
         return f"Posizioni motivo: {bioCli.motif_find(args[0], args[1])}", False
@@ -78,7 +93,7 @@ def _motif_find_tool() -> ToolDefinition:
 
 def _fasta_sampler_tool() -> ToolDefinition:
     async def handler(arguments: dict[str, Any]) -> tuple[str, bool]:
-        args = arguments.get("args", [])
+        args = _extract_args(arguments)
         if not args:
             return (
                 "Serve almeno 1 argomento: contenuto_fasta[, percentuale, seed]",
@@ -102,7 +117,7 @@ def _fasta_sampler_tool() -> ToolDefinition:
 
 def _synth_seq_tool() -> ToolDefinition:
     async def handler(arguments: dict[str, Any]) -> tuple[str, bool]:
-        args = arguments.get("args", [])
+        args = _extract_args(arguments)
         if len(args) < 3:
             return "Servono almeno 3 argomenti: training_fasta, k, length[, seed]", True
         training, k, length = args[0], int(args[1]), int(args[2])
@@ -121,7 +136,10 @@ def _run_genetic_sim_tool() -> ToolDefinition:
     async def handler(arguments: dict[str, Any]) -> tuple[str, bool]:
         rng = random.SystemRandom()
         seed = rng.random()
-        generations = arguments.get("generations", 100)
+        generations = arguments.get("generations")
+        if generations is None:
+            args = _extract_args(arguments)
+            generations = int(args[0]) if args and args[0].isdigit() else 100
         return (
             f"[biotoolkit] Sim Gen x{generations} completata. Seed isolato: {seed}",
             False,
@@ -211,7 +229,11 @@ def build_bio_tools() -> list[ToolDefinition]:
         _simple_tool(
             "biotoolkit_restriction_site",
             "Trova siti di restrizione (palindromi inversi di lunghezza 4-12).",
-            lambda args: f"Siti di restrizione: {bioCli.restriction_site(args[0] if args else '')}",
+            lambda args: (
+                f"Siti di restrizione trovati: {res}"
+                if (res := bioCli.restriction_site(args[0] if args else ""))
+                else "Nessun sito di restrizione trovato in questa sequenza."
+            ),
         ),
         _fasta_sampler_tool(),
         _simple_tool(

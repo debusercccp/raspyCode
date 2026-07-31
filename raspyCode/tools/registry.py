@@ -27,7 +27,7 @@ from typing import Any
 # un subprocess deve gestire il proprio timeout con un kill() esplicito del
 # processo figlio: un wait_for esterno lo cancellerebbe "da fuori" senza
 # dargli la possibilita' di ripulire, lasciando un processo orfano.
-DEFAULT_TOOL_TIMEOUT_SECONDS = 10.0
+DEFAULT_TOOL_TIMEOUT_SECONDS = 25.0
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[tuple[str, bool]]]
 

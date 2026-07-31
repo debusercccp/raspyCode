@@ -10,6 +10,7 @@ import httpx
 from ..core.event_bus import EventBus
 from ..core.events import (
     AssistantTokenEvent,
+    ClearHistoryEvent,
     LLMToolCallEvent,
     ModelSelectedEvent,
     PiConfigEvent,
@@ -25,7 +26,7 @@ SYSTEM_PROMPT = (
     "pertinente, e system_run_cmd solo per ispezioni di sistema innocue. "
     "Rispondi in italiano, in modo conciso e tecnico."
 )
-GATEWAY_TOOL_TIMEOUT_SECONDS = 20.0
+GATEWAY_TOOL_TIMEOUT_SECONDS = 40.0
 OLLAMA_HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=300.0, write=10.0, pool=10.0)
 MAX_HISTORY_MESSAGES = 24
 _DEFAULT_REGISTRY = build_default_registry()
@@ -75,6 +76,13 @@ class LLMGatewayService:
                             text=f"Modello selezionato: {event.model}", level="info"
                         )
                     )
+                elif isinstance(event, ClearHistoryEvent):
+                    self.history = [{"role": "system", "content": SYSTEM_PROMPT}]
+                    await self._bus.publish(
+                        StatusEvent(
+                            text="Cronologia chat e contesto svuotati.", level="info"
+                        )
+                    )
                 elif isinstance(event, PiConfigEvent):
                     self.pi_ip = event.pi_ip
                     self.base_url = f"http://{event.pi_ip}:11434"
@@ -104,13 +112,17 @@ class LLMGatewayService:
             StatusEvent(text="Interrogazione modello...", level="info")
         )
         self._trim_history()
+        enable_tools = True
+
         while True:
             payload = {
                 "model": self.model,
                 "messages": self.history,
-                "tools": TOOL_SCHEMAS,
                 "stream": True,
             }
+            if enable_tools:
+                payload["tools"] = TOOL_SCHEMAS
+
             assistant_content = ""
             tool_calls: list[dict[str, Any]] = []
             try:
@@ -132,28 +144,24 @@ class LLMGatewayService:
                         if chunk.get("done"):
                             break
             except httpx.HTTPStatusError as exc:
-                # 400 da Ollama su /api/chat con 'tools' nel payload significa
-                # quasi sempre che il modello selezionato non supporta il
-                # tool-calling (il suo template non ha un formato per i tool).
-                # Senza questo check l'utente vede solo l'HTTPStatusError
-                # grezzo, che non spiega la causa reale ne' come risolverla.
-                if exc.response.status_code == 400:
-                    msg = (
-                        f"Il modello '{self.model}' ha rifiutato la richiesta (400) - "
-                        "probabilmente non supporta il tool-calling. Prova un "
-                        "modello come qwen3:4b-instruct, qwen3:8b o gemma3 "
-                        "(Ctrl+S per cambiarlo)."
+                # Se Ollama risponde 400 ed erano presenti i tool nel payload,
+                # il modello (es. smollm2) non supporta le API di Tool Calling.
+                # Disabilitiamo i tool e riproviamo subito in modalità solo testo.
+                if exc.response.status_code == 400 and enable_tools:
+                    await self._bus.publish(
+                        StatusEvent(
+                            text=f"Modello '{self.model}' senza tool-calling: fallback in modalità solo testo.",
+                            level="warning",
+                        )
                     )
-                else:
-                    msg = f"Errore comunicazione Ollama ({self.base_url}): {exc}"
+                    enable_tools = False
+                    continue
+
+                msg = f"Errore comunicazione Ollama ({self.base_url}): {exc}"
                 await self._bus.publish(StatusEvent(text=msg, level="error"))
                 await self._bus.publish(AssistantTokenEvent(content="", done=True))
                 return
             except httpx.HTTPError as exc:
-                # Va DOPO HTTPStatusError: HTTPStatusError e' una sua
-                # sottoclasse, quindi se questo except venisse prima
-                # intercetterebbe anche i 400 e il ramo sopra non sarebbe
-                # mai raggiunto.
                 await self._bus.publish(
                     StatusEvent(
                         text=f"Errore comunicazione Ollama ({self.base_url}): {exc}",
@@ -162,6 +170,7 @@ class LLMGatewayService:
                 )
                 await self._bus.publish(AssistantTokenEvent(content="", done=True))
                 return
+
             if assistant_content:
                 await self._bus.publish(AssistantTokenEvent(content="", done=True))
             if not tool_calls:

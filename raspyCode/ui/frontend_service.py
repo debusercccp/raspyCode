@@ -14,17 +14,18 @@ from textual.widgets import (
     Header,
     Input,
     Label,
-    ListItem,
-    ListView,
+    OptionList,
     RichLog,
     Static,
 )
+from textual.widgets.option_list import Option
 
 from raspyCode.ui.banner import RASPY_BANNER
 
 from ..core.event_bus import EventBus
 from ..core.events import (
     AssistantTokenEvent,
+    ClearHistoryEvent,
     ConnectionStatusEvent,
     Event,
     LLMToolCallEvent,
@@ -57,18 +58,10 @@ class SettingsScreen(ModalScreen[None]):
             yield Label("[bold]Impostazioni raspyCode[/]")
             yield Label("IP Raspberry Pi (routing verso Ollama):")
             yield Input(value=self._current_pi_ip, id="pi-ip-input")
-            yield Label("Modello:")
+            yield Label("Modello (Frecce ↑/↓ + Invio):")
             if self._models:
-                yield ListView(
-                    *[
-                        ListItem(
-                            Label(m),
-                            classes="selected" if m == self._current_model else "",
-                        )
-                        for m in self._models
-                    ],
-                    id="model-list",
-                )
+                options = [Option(m, id=m) for m in self._models]
+                yield OptionList(*options, id="model-list")
             else:
                 yield Label(
                     "[yellow]Nessun modello disponibile — il Raspberry Pi non e' collegato "
@@ -76,22 +69,30 @@ class SettingsScreen(ModalScreen[None]):
                     id="no-models-label",
                 )
             yield Label(
-                "[dim]Invio su IP per confermare il routing · click su un modello "
+                "[dim]Invio su IP per confermare il routing · Frecce + Invio su un modello "
                 "per selezionarlo · Esc per chiudere[/dim]"
             )
 
+    def on_mount(self) -> None:
+        """Assegna il focus immediato alla OptionList e posiziona l'highlight sul modello attuale."""
+        if not self._models:
+            return
+        with contextlib.suppress(Exception):
+            option_list = self.query_one("#model-list", OptionList)
+            option_list.focus()
+            if self._current_model and self._current_model in self._models:
+                idx = self._models.index(self._current_model)
+                option_list.highlighted = idx
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "pi-ip-input" and event.value.strip():
-            self.app.publish_from_ui(PiConfigEvent(pi_ip=event.value.strip()))
+            self.app.publish_from_ui(PiConfigEvent(pi_ip=event.value.strip()))  # type: ignore[attr-defined]
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        if event.list_view.id != "model-list":
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != "model-list":
             return
-        index = event.list_view.index
-        if index is None or not (0 <= index < len(self._models)):
-            return
-        model_name = self._models[index]
-        self.app.publish_from_ui(ModelSelectedEvent(model=model_name))  # type: ignore[attr-defined]
+        selected_model = str(event.option.id)
+        self.app.publish_from_ui(ModelSelectedEvent(model=selected_model))  # type: ignore[attr-defined]
         self.dismiss()
 
 
@@ -103,7 +104,7 @@ class RaspyCodeApp(App):
     Screen {
         align: center middle;
         scrollbar-size: 0 0;
-        }
+    }
 
     #main-container {
         align: center middle;
@@ -154,6 +155,8 @@ class RaspyCodeApp(App):
 
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("ctrl+s", "open_settings", "Impostazioni"),
+        ("ctrl+l", "clear_history", "Pulisci Chat"),
+        ("ctrl+y", "copy_last_response", "Copia Ultima Risposta"),
         ("ctrl+q", "quit_app", "Esci"),
     ]
 
@@ -169,6 +172,7 @@ class RaspyCodeApp(App):
         self._queue = bus.subscribe()
         self.pi_ip = pi_ip
         self.current_model = model
+        self._last_assistant_text: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -244,6 +248,7 @@ class RaspyCodeApp(App):
                 if event.done:
                     if current_response:
                         log.write(f"[bold green]raspyCode[/] {current_response}")
+                        self._last_assistant_text = current_response
                     current_response = ""
             elif isinstance(event, LLMToolCallEvent):
                 log.write(f"[yellow]tool_call[/] {event.tool_name} {event.arguments}")
@@ -252,9 +257,11 @@ class RaspyCodeApp(App):
                 log.write(f"[{style}]{event.tool_name}[/] {event.result_output}")
             elif isinstance(event, StatusEvent):
                 # Nessun filtro necessario: gestiamo tutti gli StatusEvent (es. SYSTEM BOOT COMPLETED)
-                color = {"info": "dim", "warning": "yellow", "error": "bold red"}.get(
-                    event.level, "dim"
-                )
+                color = {
+                    "info": "dim",
+                    "warning": "yellow",
+                    "error": "bold red",
+                }.get(event.level, "dim")
                 log.write(f"[{color}]{event.text}[/{color}]")
             elif isinstance(event, ConnectionStatusEvent):
                 self.pi_connected = event.connected
@@ -267,6 +274,28 @@ class RaspyCodeApp(App):
 
             self._queue.task_done()
 
+    def action_clear_history(self) -> None:
+        """Svuota il RichLog in UI e invia l'evento di reset della cronologia al backend."""
+        try:
+            log = self.query_one("#chat-log", RichLog)
+            log.clear()  # Metodo nativo di RichLog per cancellare tutte le righe
+            log.write(
+                "[italic green]Cronologia di chat e contesto del modello svuotati.[/]"
+            )
+        except Exception:
+            pass
+
+        # Notifica al Gateway di svuotare l'array history di Ollama
+        self.publish_from_ui(ClearHistoryEvent())
+
+    def action_copy_last_response(self) -> None:
+        """Copia l'ultimo messaggio dell'assistente negli appunti del sistema."""
+        if self._last_assistant_text:
+            self.copy_to_clipboard(self._last_assistant_text)
+            self.notify("Ultima risposta copiata negli appunti!", timeout=2.0)
+        else:
+            self.notify("Nessuna risposta da copiare.", severity="warning", timeout=2.0)
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "chat-input":
             return
@@ -274,8 +303,14 @@ class RaspyCodeApp(App):
         event.input.value = ""
         if not text:
             return
-        if text in {"/quit", "/exit"}:
+
+        # --- COMANDI SLASH ---
+        text_lower = text.lower()
+        if text_lower in {"/quit", "/exit"}:
             self.action_quit_app()
+            return
+        if text_lower in {"/clear", "/reset"}:
+            self.action_clear_history()
             return
 
         # 1. FORZIAMO LA SCOMPARSA DEL BANNER E LA COMPARSA DEL LOG

@@ -39,7 +39,7 @@ SYSTEM_CMD_ALLOWED_ROOT = Path.cwd().resolve()
 # Comandi come "ls" su directory enormi possono richiedere piu' margine dei
 # tool bio in-process (che sono quasi sempre istantanei): timeout dedicato,
 # disaccoppiato da DEFAULT_TOOL_TIMEOUT_SECONDS.
-SYSTEM_CMD_TIMEOUT_SECONDS = 15.0
+SYSTEM_CMD_TIMEOUT_SECONDS = 30.0
 
 # Limite alla dimensione dell'output: un comando come "cat" su un file
 # enorme non deve ne' saturare la memoria ne' gonfiare a dismisura il
