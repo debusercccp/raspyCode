@@ -148,64 +148,54 @@ async def test_connectivity_watch_config_task_is_cancelled_on_run_cancel():
 
 
 @pytest.mark.asyncio
-async def test_system_run_cmd_rejects_path_outside_allowed_root(tmp_path):
-    from raspyCode.services.tool_executor_service import ToolExecutorService
-
-    bus = EventBus()
-    executor = ToolExecutorService(bus)
+async def test_system_run_cmd_rejects_path_outside_allowed_root():
+    from raspyCode.tools.system import run_system_cmd
 
     # bug originale: l'allow-list permetteva 'cat' su QUALUNQUE file
     # leggibile dall'utente, incluso ~/.ssh/id_rsa o /etc/shadow.
-    result, is_error = await executor._run_system_cmd({"command": "cat /etc/shadow"})
+    result, is_error = await run_system_cmd({"command": "cat /etc/shadow"})
     assert is_error is True
     assert "non consentito" in result
 
 
 @pytest.mark.asyncio
 async def test_system_run_cmd_rejects_home_expansion_outside_root():
-    from raspyCode.services.tool_executor_service import ToolExecutorService
+    from raspyCode.tools.system import run_system_cmd
 
-    bus = EventBus()
-    executor = ToolExecutorService(bus)
-
-    result, is_error = await executor._run_system_cmd({"command": "cat ~/.ssh/id_rsa"})
+    result, is_error = await run_system_cmd({"command": "cat ~/.ssh/id_rsa"})
     assert is_error is True
     assert "non consentito" in result
 
 
 @pytest.mark.asyncio
 async def test_system_run_cmd_allows_relative_path_inside_cwd(tmp_path, monkeypatch):
-    import raspyCode.services.tool_executor_service as mod
+    import raspyCode.tools.system as mod
 
     test_file = tmp_path / "note.txt"
     test_file.write_text("contenuto di prova")
 
     monkeypatch.setattr(mod, "SYSTEM_CMD_ALLOWED_ROOT", tmp_path.resolve())
 
-    bus = EventBus()
-    executor = mod.ToolExecutorService(bus)
-    result, is_error = await executor._run_system_cmd({"command": "cat note.txt"})
+    result, is_error = await mod.run_system_cmd({"command": "cat note.txt"})
     assert is_error is False
     assert "contenuto di prova" in result
 
 
 @pytest.mark.asyncio
 async def test_system_run_cmd_truncates_large_output(monkeypatch):
-    import raspyCode.services.tool_executor_service as mod
+    import raspyCode.tools.system as mod
 
     monkeypatch.setattr(mod, "MAX_OUTPUT_BYTES", 10)
 
-    bus = EventBus()
-    executor = mod.ToolExecutorService(bus)
     # 'uname -a' produce un output breve normalmente, ma forziamo il limite
     # bassissimo per esercitare il ramo di troncamento in modo deterministico.
-    result, _ = await executor._run_system_cmd({"command": "uname -a"})
+    result, _ = await mod.run_system_cmd({"command": "uname -a"})
     assert "troncato" in result
 
 
 def test_is_safe_path_arg_blocks_traversal(tmp_path, monkeypatch):
-    import raspyCode.services.tool_executor_service as mod
+    import raspyCode.tools.system as mod
 
     monkeypatch.setattr(mod, "SYSTEM_CMD_ALLOWED_ROOT", tmp_path.resolve())
-    assert mod.ToolExecutorService._is_safe_path_arg("../../../etc/passwd") is False
-    assert mod.ToolExecutorService._is_safe_path_arg("subdir/file.txt") is True
+    assert mod.is_safe_path_arg("../../../etc/passwd") is False
+    assert mod.is_safe_path_arg("subdir/file.txt") is True

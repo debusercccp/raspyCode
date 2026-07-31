@@ -1,7 +1,12 @@
 """Inizializzazione del pacchetto bioCli: esposizione delle funzioni pure."""
 
-from .assembly import genome_assembly, how_many_seq, longest_shared_seq, orf_finder
-from .io_utils import blast_output, fastx_sampler, seq_magic
+from .assembly import (
+    greedy_kmer_assembly,
+    how_many_seq,
+    longest_shared_seq,
+    protein_stretch_finder,
+)
+from .io_utils import blast_output, fasta_sampler, seq_magic
 from .search import grep_fastx, motif_find, n_glyc_motif, restriction_site
 from .sequence import (
     base_count,
@@ -17,16 +22,16 @@ __all__ = [
     "base_count",
     "blast_output",
     "dna_to_rna",
-    "fastx_sampler",
+    "fasta_sampler",
     "gc_content",
-    "genome_assembly",
+    "greedy_kmer_assembly",
     "grep_fastx",
     "hamming_dist",
     "how_many_seq",
     "longest_shared_seq",
     "motif_find",
     "n_glyc_motif",
-    "orf_finder",
+    "protein_stretch_finder",
     "restriction_site",
     "rev_comp",
     "rna_to_prot",

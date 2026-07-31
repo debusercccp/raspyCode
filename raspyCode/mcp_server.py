@@ -1,44 +1,79 @@
-import sys
-from pathlib import Path
+"""MCP server: espone i tool bioinformatici di raspyCode a client MCP
+esterni (es. Claude Desktop, altri agenti).
+
+Generato dinamicamente dal ToolRegistry condiviso (raspyCode.tools) - la
+stessa fonte di verita' usata da LLMGatewayService (schema Ollama) e
+ToolExecutorService (esecuzione locale). Prima questo file dichiarava
+manualmente solo 3 tool con la sintassi @mcp.tool(), un terzo elenco
+indipendente rispetto agli altri due (e con import verso funzioni
+inesistenti, vedi git history).
+
+SCELTA DI SICUREZZA ESPLICITA: system_run_cmd NON viene esposto qui, anche
+se e' presente nel ToolRegistry condiviso. Un client MCP esterno connesso a
+questo server via stdio potrebbe altrimenti eseguire comandi di sistema
+sulla macchina che lo ospita; il file originale esponeva solo funzioni bio
+pure e innocue, e questo refactor mantiene lo stesso perimetro. Se in
+futuro serve esporre anche system_run_cmd via MCP, va deciso esplicitamente
+qui, non ereditato automaticamente dal registry.
+"""
+
+from collections.abc import Awaitable, Callable
 
 from mcp.server.fastmcp import FastMCP
 
-# Assicura che il pacchetto raspyCode sia risolvibile
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-from raspyCode.bioCli.sequence import dna_to_rna, gc_content, rev_comp
+from raspyCode.tools import build_default_registry
+from raspyCode.tools.registry import ToolDefinition
 
-# Inizializza il server MCP per la bioinformatica
+# Tool del registry condiviso che NON vengono esposti via MCP (vedi nota di
+# sicurezza sopra). Whitelist esplicita del genere "cosa NON esporre",
+# valutata a ogni avvio: se in futuro si aggiungono altri tool con side
+# effect di sistema, vanno aggiunti qui esplicitamente.
+_MCP_EXCLUDED_TOOLS = {"system_run_cmd"}
+
 mcp = FastMCP("RaspyCode-BioToolkit")
 
-
-@mcp.tool()
-def calculate_gc_content(sequence: str) -> str:
-    """Calcola la percentuale del contenuto GC in una sequenza DNA/RNA."""
-    try:
-        res = gc_content(sequence)
-        return f"GC Content: {res}%"
-    except Exception as e:
-        return f"Errore nel calcolo del GC Content: {str(e)}"
+_registry = build_default_registry()
 
 
-@mcp.tool()
-def reverse_complement(sequence: str) -> str:
-    """Restituisce il filamento complementare inverso di una sequenza DNA."""
-    try:
-        return rev_comp(sequence)
-    except Exception as e:
-        return f"Errore nel calcolo del Reverse Complement: {str(e)}"
+def _make_args_tool_fn(tool: ToolDefinition) -> Callable[[list[str]], Awaitable[str]]:
+    """Fabbrica per i tool con schema generico {'args': [...]} (la
+    stragrande maggioranza dei biotoolkit_*)."""
+
+    async def fn(args: list[str]) -> str:
+        output, _is_error = await tool.handler({"args": args})
+        return output
+
+    fn.__name__ = tool.name
+    fn.__doc__ = tool.description
+    return fn
 
 
-@mcp.tool()
-def translate_dna_to_rna(sequence: str) -> str:
-    """Trascrive una sequenza di DNA nel corrispondente filamento di RNA."""
-    try:
-        return dna_to_rna(sequence)
-    except Exception as e:
-        return f"Errore nella trascrizione DNA->RNA: {str(e)}"
+def _make_genetic_sim_tool_fn(tool: ToolDefinition) -> Callable[[int], Awaitable[str]]:
+    async def fn(generations: int) -> str:
+        output, _is_error = await tool.handler({"generations": generations})
+        return output
 
+    fn.__name__ = tool.name
+    fn.__doc__ = tool.description
+    return fn
+
+
+def _build_mcp_function(tool: ToolDefinition) -> Callable:
+    if tool.name == "biotoolkit_run_genetic_sim":
+        return _make_genetic_sim_tool_fn(tool)
+    return _make_args_tool_fn(tool)
+
+
+def register_all_tools() -> None:
+    for tool in _registry.all():
+        if tool.name in _MCP_EXCLUDED_TOOLS:
+            continue
+        fn = _build_mcp_function(tool)
+        mcp.add_tool(fn, name=tool.name, description=tool.description)
+
+
+register_all_tools()
 
 if __name__ == "__main__":
-    # Avvia il server in modalità standard input/output (JSON-RPC)
+    # Avvia il server in modalita' standard input/output (JSON-RPC)
     mcp.run(transport="stdio")

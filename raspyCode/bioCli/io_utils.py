@@ -41,8 +41,13 @@ def seq_magic(fasta_content: str) -> dict[str, dict[str, float | int]]:
     return stats
 
 
-def fastx_sampler(fasta_content: str, percent: float, seed: int | None = None) -> str:
-    """Campiona probabilisticamente i record di un file FASTA in base a una percentuale."""
+def fasta_sampler(fasta_content: str, percent: float, seed: int | None = None) -> str:
+    """Campiona probabilisticamente i record di un file FASTA in base a una percentuale.
+
+    Nota: nonostante il vecchio nome (fastx_sampler) suggerisse supporto
+    anche FASTQ, questa funzione riconosce solo il formato FASTA (righe che
+    iniziano con '>'); un file FASTQ (con '@', qualita' su riga '+') non
+    verrebbe interpretato correttamente."""
     rng = random.Random(seed)
 
     lines = fasta_content.splitlines()

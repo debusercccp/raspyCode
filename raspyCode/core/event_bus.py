@@ -16,7 +16,7 @@ from .events import Event
 # la distinzione fine tra eventi "lossless" vs "ultimo stato valido" (per
 # quello servirebbero politiche per-tipo-di-evento), ma limita il caso
 # peggiore.
-DEFAULT_MAX_QUEUE_SIZE = 1000
+DEFAULT_MAX_QUEUE_SIZE = 2000
 
 
 class EventBus:

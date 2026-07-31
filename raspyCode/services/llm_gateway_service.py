@@ -17,6 +17,7 @@ from ..core.events import (
     ToolResultEvent,
     UserMessageEvent,
 )
+from ..tools import build_default_registry
 
 SYSTEM_PROMPT = (
     "Sei raspyCode, un agente locale per bioinformatica. L'utente e' 'noya'. "
@@ -26,13 +27,15 @@ SYSTEM_PROMPT = (
 )
 
 # Margine di sicurezza sull'attesa del risultato di un tool: ToolExecutorService
-# applica gia' un proprio timeout (10s, vedi tool_executor_service.py) e
-# pubblica SEMPRE un ToolResultEvent (successo o errore). Questo timeout qui
-# e' una rete di sicurezza per il caso in cui l'executor non risponda affatto
-# (crash, cancellazione, tool_name non riconosciuto che pero' non pubblica -
-# scenario che oggi non si verifica ma che non va assunto per sempre vero):
-# senza, il Gateway resterebbe bloccato su `await fut` per sempre.
-GATEWAY_TOOL_TIMEOUT_SECONDS = 15.0
+# applica gia' un proprio timeout (10s per i tool bio in-process, 15s per
+# system_run_cmd - vedi raspyCode/tools/) e pubblica SEMPRE un ToolResultEvent
+# (successo o errore). Questo timeout qui e' una rete di sicurezza per il
+# caso in cui l'executor non risponda affatto (crash, cancellazione, tool_name
+# non riconosciuto che pero' non pubblica - scenario che oggi non si verifica
+# ma che non va assunto per sempre vero): senza, il Gateway resterebbe
+# bloccato su `await fut` per sempre. Tenuto sopra il piu' lento dei timeout
+# lato executor (15s) per lasciare margine anche nel caso peggiore.
+GATEWAY_TOOL_TIMEOUT_SECONDS = 20.0
 
 # httpx.AsyncClient(timeout=None) e' timeout infinito: se Ollama si blocca
 # o smette di rispondere a meta' streaming, il Gateway resta appeso per
@@ -44,75 +47,16 @@ OLLAMA_HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=300.0, write=10.0, pool=10
 # prompt inviato a ogni turno diventa via via piu' grande (piu' lento, piu'
 # RAM, rischio di superare il context window del modello). Il messaggio di
 # sistema viene sempre preservato; si trimma solo il resto.
-MAX_HISTORY_MESSAGES = 40
+MAX_HISTORY_MESSAGES = 24
 
-_BIOTOOLKIT_TOOL_NAMES = [
-    "biotoolkit_gc_content",
-    "biotoolkit_rev_comp",
-    "biotoolkit_dna_to_rna",
-    "biotoolkit_rna_to_prot",
-    "biotoolkit_base_count",
-    "biotoolkit_hamming_dist",
-    "biotoolkit_orf_finder",
-    "biotoolkit_genome_assembly",
-    "biotoolkit_how_many_seq",
-    "biotoolkit_longest_shared_seq",
-    "biotoolkit_grep_fastx",
-    "biotoolkit_motif_find",
-    "biotoolkit_n_glyc_motif",
-    "biotoolkit_restriction_site",
-    "biotoolkit_fastx_sampler",
-    "biotoolkit_seq_magic",
-    "biotoolkit_blast_output",
-    "biotoolkit_synth_seq",
-]
+_DEFAULT_REGISTRY = build_default_registry()
 
-TOOL_SCHEMAS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": name,
-            "description": f"Esegue lo script biotoolkit '{name}' passando args come CLI.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "args": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Argomenti a riga di comando per lo script.",
-                    }
-                },
-                "required": ["args"],
-            },
-        },
-    }
-    for name in _BIOTOOLKIT_TOOL_NAMES
-] + [
-    {
-        "type": "function",
-        "function": {
-            "name": "biotoolkit_run_genetic_sim",
-            "description": "Esegue una simulazione genetica randomica per N generazioni.",
-            "parameters": {
-                "type": "object",
-                "properties": {"generations": {"type": "integer"}},
-                "required": ["generations"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "system_run_cmd",
-            "description": "Esegue un comando di sistema in allow-list (ls, cat, df, free, uname, ecc).",
-            "parameters": {
-                "type": "object",
-                "properties": {"command": {"type": "string"}},
-                "required": ["command"],
-            },
-        },
-    },
-]
+# Derivato dal ToolRegistry condiviso (raspyCode.tools), la stessa fonte di
+# verita' usata da ToolExecutorService per l'esecuzione: prima queste erano
+# due liste separate (questa qui e gli if/elif dell'Executor) tenute
+# allineate manualmente, con il rischio di dichiarare al modello un tool che
+# l'Executor non sapeva eseguire (o viceversa).
+TOOL_SCHEMAS: list[dict[str, Any]] = _DEFAULT_REGISTRY.ollama_schemas()
 
 
 class LLMGatewayService:

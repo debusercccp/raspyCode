@@ -62,9 +62,9 @@ async def test_restriction_site_tool():
 
 
 @pytest.mark.asyncio
-async def test_fastx_sampler_tool():
+async def test_fasta_sampler_tool():
     response = await run_tool(
-        "biotoolkit_fastx_sampler", {"args": [FASTA, "100.0", "1"]}
+        "biotoolkit_fasta_sampler", {"args": [FASTA, "100.0", "1"]}
     )
     assert response.is_error is False
     assert "seq1" in response.result_output

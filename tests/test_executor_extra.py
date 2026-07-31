@@ -68,8 +68,8 @@ async def test_executor_hamming_dist_tool():
 
 
 @pytest.mark.asyncio
-async def test_executor_orf_finder_tool():
-    response = await run_tool("biotoolkit_orf_finder", {"args": ["MKV*"]})
+async def test_executor_protein_stretch_finder_tool():
+    response = await run_tool("biotoolkit_protein_stretch_finder", {"args": ["MKV*"]})
     assert response.is_error is False
     assert "MKV*" in response.result_output
 
@@ -93,9 +93,9 @@ async def test_executor_longest_shared_seq_tool():
 
 
 @pytest.mark.asyncio
-async def test_executor_genome_assembly_tool():
+async def test_executor_greedy_kmer_assembly_tool():
     response = await run_tool(
-        "biotoolkit_genome_assembly", {"args": ["ATG", "TGC", "GCA"]}
+        "biotoolkit_greedy_kmer_assembly", {"args": ["ATG", "TGC", "GCA"]}
     )
     assert response.is_error is False
     assert "ATGCA" in response.result_output

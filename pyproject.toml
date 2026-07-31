@@ -19,8 +19,6 @@ dependencies = [
     "textual>=0.80.0",  # Interfaccia utente full-screen
     "httpx>=0.24.0",    # Client HTTP asincrono per Ollama ed healthcheck
     "rich>=13.0.0",     # Dipendenza nativa di Textual / BioPipeLine
-    "biopython>=1.80",  # Core parsing genomico per gli script bioCli
-    "pandas>=2.0.0",    # Utilizzato da blastOutput.py
     "numpy>=1.24.0",    # Calcolo vettoriale (RAGService: similarita' coseno)
 ]
 

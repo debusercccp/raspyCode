@@ -1,14 +1,14 @@
 from raspyCode.bioCli import (
     base_count,
     blast_output,
-    fastx_sampler,
-    genome_assembly,
+    fasta_sampler,
+    greedy_kmer_assembly,
     grep_fastx,
     how_many_seq,
     longest_shared_seq,
     motif_find,
     n_glyc_motif,
-    orf_finder,
+    protein_stretch_finder,
     restriction_site,
     rna_to_prot,
     seq_magic,
@@ -21,9 +21,9 @@ FASTA = ">seq1 primo record\nATGCGATCG\n>seq2 secondo record\nATGGGGCCC\n"
 # --- assembly.py -------------------------------------------------------
 
 
-def test_orf_finder_finds_open_reading_frames():
-    assert orf_finder("MKV*MTT*") == ["MKV*", "MTT*"]
-    assert orf_finder("kv") == []
+def test_protein_stretch_finder_finds_open_reading_frames():
+    assert protein_stretch_finder("MKV*MTT*") == ["MKV*", "MTT*"]
+    assert protein_stretch_finder("kv") == []
 
 
 def test_how_many_seq_counts_fasta_records():
@@ -36,9 +36,9 @@ def test_longest_shared_seq_finds_common_substring():
     assert longest_shared_seq([]) == ""
 
 
-def test_genome_assembly_greedy_overlap():
-    assert genome_assembly(["AAA", "AAT", "ATG", "TGG"]) == "AAATGG"
-    assert genome_assembly([]) == ""
+def test_greedy_kmer_assembly_greedy_overlap():
+    assert greedy_kmer_assembly(["AAA", "AAT", "ATG", "TGG"]) == "AAATGG"
+    assert greedy_kmer_assembly([]) == ""
 
 
 # --- io_utils.py ---------------------------------------------------------
@@ -51,13 +51,13 @@ def test_seq_magic_computes_stats_per_record():
     assert "seq2" in stats
 
 
-def test_fastx_sampler_is_deterministic_with_seed():
-    result_a = fastx_sampler(FASTA, percent=100.0, seed=1)
-    result_b = fastx_sampler(FASTA, percent=100.0, seed=1)
+def test_fasta_sampler_is_deterministic_with_seed():
+    result_a = fasta_sampler(FASTA, percent=100.0, seed=1)
+    result_b = fasta_sampler(FASTA, percent=100.0, seed=1)
     assert result_a == result_b
     assert "seq1" in result_a and "seq2" in result_a
 
-    assert fastx_sampler(FASTA, percent=0.0, seed=1) == ""
+    assert fasta_sampler(FASTA, percent=0.0, seed=1) == ""
 
 
 def test_blast_output_parses_tabular_rows():

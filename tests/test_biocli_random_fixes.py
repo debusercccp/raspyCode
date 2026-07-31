@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from raspyCode.bioCli import fastx_sampler, synth_seq
+from raspyCode.bioCli import fasta_sampler, synth_seq
 
 FASTA = ">seq1\nATGCGATCG\n>seq2\nATGGGGCCC\n"
 
@@ -44,18 +44,18 @@ def test_synth_seq_does_not_mutate_global_random_state():
     assert actual_next == expected_next
 
 
-def test_fastx_sampler_does_not_mutate_global_random_state():
+def test_fasta_sampler_does_not_mutate_global_random_state():
     random.seed(54321)
     expected_next = random.random()
 
     random.seed(54321)
-    fastx_sampler(FASTA, percent=50.0, seed=1)
+    fasta_sampler(FASTA, percent=50.0, seed=1)
     actual_next = random.random()
 
     assert actual_next == expected_next
 
 
-def test_fastx_sampler_still_deterministic_with_seed():
-    a = fastx_sampler(FASTA, percent=100.0, seed=7)
-    b = fastx_sampler(FASTA, percent=100.0, seed=7)
+def test_fasta_sampler_still_deterministic_with_seed():
+    a = fasta_sampler(FASTA, percent=100.0, seed=7)
+    b = fasta_sampler(FASTA, percent=100.0, seed=7)
     assert a == b

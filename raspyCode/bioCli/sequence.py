@@ -73,7 +73,12 @@ _CODON_TABLE = {
 
 
 def gc_content(seq: str) -> float:
-    """Calcola la percentuale di GC in una sequenza nucleotidica."""
+    """Calcola la percentuale di GC in una sequenza nucleotidica.
+
+    Nota: il denominatore e' la lunghezza totale della sequenza, non solo i
+    caratteri A/T/G/C: caratteri ambigui IUPAC (es. 'N') o non validi
+    riducono comunque la percentuale calcolata pur non essendo ne' G ne' C.
+    Per una sequenza 'ATGCNNNN' il risultato e' 25.0, non 50.0."""
     if not seq:
         return 0.0
     c = Counter(seq.upper())
@@ -91,7 +96,13 @@ def dna_to_rna(seq: str) -> str:
 
 
 def rna_to_prot(seq: str) -> str:
-    """Traduce una sequenza di RNA in proteina arrestandosi al primo stop codon."""
+    """Traduce una sequenza di RNA in proteina, frame 0, fermandosi al primo stop codon.
+
+    Nota: traduce a partire dal primo nucleotide della stringa (frame 0),
+    NON cerca il primo codone AUG di partenza. Su 'GGCAUGAAA' produce 'GMK'
+    (legge GGC-AUG-AAA), non la traduzione a partire dall'AUG interno. Per
+    un uso realistico su RNA messaggero grezzo, isolare l'ORF (a partire da
+    AUG) prima di chiamare questa funzione."""
     seq = seq.upper()
     proteins = []
     for i in range(0, len(seq) - 2, 3):
