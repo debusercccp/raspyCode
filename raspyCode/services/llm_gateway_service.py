@@ -21,11 +21,14 @@ from ..core.events import (
 from ..tools import build_default_registry
 
 SYSTEM_PROMPT = (
-    "Sei raspyCode, un agente locale per bioinformatica. L'utente e' 'noya'. "
+    "Sei raspyCode, un agente locale per bioinformatica. L'utente è 'noya'. "
     "Usa i tool biotoolkit_* per analisi su sequenze/file FASTA/FASTQ quando "
     "pertinente, e system_run_cmd solo per ispezioni di sistema innocue. "
-    "Rispondi in italiano, in modo conciso e tecnico."
+    "IMPORTANTE: se la richiesta dell'utente è un saluto, una domanda generica "
+    "o non richiede l'uso di tool, rispondi direttamente e in modo discorsivo. "
+    "Rispondi in modo conciso e tecnico quando si parla di scienza."
 )
+
 GATEWAY_TOOL_TIMEOUT_SECONDS = 40.0
 OLLAMA_HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=300.0, write=10.0, pool=10.0)
 MAX_HISTORY_MESSAGES = 24
@@ -70,10 +73,35 @@ class LLMGatewayService:
                     if fut and not fut.done():
                         fut.set_result(event)
                 elif isinstance(event, ModelSelectedEvent):
-                    self.model = event.model
+                    # 1. Se c'era un modello attivo, forziamo lo scaricamento prima di cambiare
+                    if self.current_model and self.current_model != event.model:
+                        await self._bus.publish(
+                            StatusEvent(
+                                text=f"Scaricamento modello precedente ({self.current_model})...",
+                                level="info",
+                            )
+                        )
+                        try:
+                            # Mandiamo una richiesta vuota con keep_alive=0 per liberare la RAM
+                            async with httpx.AsyncClient() as client:
+                                await client.post(
+                                    f"{self.base_url}/api/chat",
+                                    json={
+                                        "model": self.current_model,
+                                        "messages": [],
+                                        "keep_alive": 0,
+                                    },
+                                    timeout=5.0,
+                                )
+                        except Exception as exc:
+                            # Loggiamo l'errore in modalità silente per non bloccare il caricamento del successivo
+                            print(f"Errore durante l'unload: {exc}")
+
+                    # 2. Impostiamo il nuovo modello attivo
+                    self.current_model = event.model
                     await self._bus.publish(
                         StatusEvent(
-                            text=f"Modello selezionato: {event.model}", level="info"
+                            text=f"Modello impostato su: {event.model}", level="info"
                         )
                     )
                 elif isinstance(event, ClearHistoryEvent):

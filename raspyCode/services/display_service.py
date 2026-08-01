@@ -13,6 +13,7 @@ e ridisegna l'intero schermo componendo le tre sezioni, invece di
 processare ogni evento in isolamento e perdere il resto.
 """
 
+import os
 from pathlib import Path
 
 from ..core.event_bus import EventBus
@@ -25,7 +26,9 @@ from ..core.events import (
     UserMessageEvent,
 )
 
-FB_PATH = "/dev/fb1"
+FB_PATH = os.environ.get(
+    "RASPY_FB_PATH", "/dev/fb0" if Path("/dev/fb0").exists() else "/dev/fb1"
+)
 FB_WIDTH = 480
 FB_HEIGHT = 320
 
