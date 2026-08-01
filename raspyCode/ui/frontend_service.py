@@ -34,7 +34,7 @@ from ..core.events import (
     PiConfigEvent,
     StatusEvent,
     ToolResultEvent,
-    UserMessageEvent,
+    UserChatEvent,
 )
 
 USER_IDENTITY = "noya"
@@ -332,8 +332,14 @@ class RaspyCodeApp(App):
             return
 
         # 3. INVIO MESSAGGIO NORMALE
+        # Pubblichiamo UserChatEvent (non UserMessageEvent) cosi' il
+        # messaggio passa prima da RAGService, che lo arricchisce col
+        # contesto recuperato da SQLite e lo inoltra al gateway come
+        # EnrichedChatEvent. Se RAGService fallisce (Ollama offline, DB
+        # vuoto), il suo fallback inoltra comunque il prompt originale:
+        # la chat continua a funzionare anche senza RAG disponibile.
         log.write(f"[bold cyan]{USER_IDENTITY}>[/] {text}")
-        self.publish_from_ui(UserMessageEvent(sender_name=USER_IDENTITY, content=text))
+        self.publish_from_ui(UserChatEvent(query=text))
 
     def action_open_settings(self) -> None:
         self.push_screen(

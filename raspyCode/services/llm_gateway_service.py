@@ -11,6 +11,7 @@ from ..core.event_bus import EventBus
 from ..core.events import (
     AssistantTokenEvent,
     ClearHistoryEvent,
+    EnrichedChatEvent,
     LLMToolCallEvent,
     ModelSelectedEvent,
     PiConfigEvent,
@@ -21,12 +22,23 @@ from ..core.events import (
 from ..tools import build_default_registry
 
 SYSTEM_PROMPT = (
-    "Sei raspyCode, un agente locale per bioinformatica. L'utente è 'noya'. "
-    "Usa i tool biotoolkit_* per analisi su sequenze/file FASTA/FASTQ quando "
-    "pertinente, e system_run_cmd solo per ispezioni di sistema innocue. "
-    "IMPORTANTE: se la richiesta dell'utente è un saluto, una domanda generica "
-    "o non richiede l'uso di tool, rispondi direttamente e in modo discorsivo. "
-    "Rispondi in modo conciso e tecnico quando si parla di scienza."
+    "Sei raspyCode, l'assistente personale di 'noya', in esecuzione in locale "
+    "su un Raspberry Pi. Sei il suo assistente per qualsiasi cosa: rispondi a "
+    "domande di ogni genere (quotidiane, di studio, organizzative, tecniche, "
+    "generiche) esattamente come farebbe un assistente generalista. "
+    "Oltre a questo, hai una specializzazione approfondita in bioinformatica: "
+    "quando la richiesta riguarda sequenze, file FASTA/FASTQ o analisi "
+    "biologiche, usa i tool biotoolkit_* disponibili; usa system_run_cmd solo "
+    "per ispezioni di sistema innocue. "
+    "IMPORTANTE: la specializzazione in bioinformatica è un'aggiunta alle tue "
+    "capacità, non un limite. Non rifiutare mai una richiesta solo perché non "
+    "riguarda la bioinformatica: rispondi comunque nel modo più utile "
+    "possibile, usando le tue conoscenze generali quando i tool non sono "
+    "pertinenti. Se ricevi un contesto RAG recuperato da documenti locali, "
+    "usalo per rispondere in modo più preciso, ma se il contesto è vuoto o "
+    "irrilevante rispondi comunque basandoti su ciò che sai. "
+    "Rispondi in italiano, in modo discorsivo per le domande generiche e "
+    "conciso e tecnico quando si parla di scienza o bioinformatica."
 )
 
 GATEWAY_TOOL_TIMEOUT_SECONDS = 40.0
@@ -48,6 +60,10 @@ class LLMGatewayService:
         self.pi_ip = pi_ip
         self.base_url = f"http://{pi_ip}:11434"
         self.model: str | None = model
+        # current_model rispecchia self.model ed e' usato dal branch
+        # ModelSelectedEvent per sapere se serve scaricare (keep_alive=0)
+        # il modello precedentemente caricato prima di attivarne uno nuovo.
+        self.current_model: str | None = model
         self.history: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT}
         ]
@@ -66,64 +82,89 @@ class LLMGatewayService:
         try:
             while True:
                 event = await self._queue.get()
-                if isinstance(event, UserMessageEvent):
-                    await self._on_user_message(event)
-                elif isinstance(event, ToolResultEvent):
-                    fut = self._pending_tool_calls.pop(event.call_id, None)
-                    if fut and not fut.done():
-                        fut.set_result(event)
-                elif isinstance(event, ModelSelectedEvent):
-                    # 1. Se c'era un modello attivo, forziamo lo scaricamento prima di cambiare
-                    if self.current_model and self.current_model != event.model:
-                        await self._bus.publish(
-                            StatusEvent(
-                                text=f"Scaricamento modello precedente ({self.current_model})...",
-                                level="info",
-                            )
-                        )
-                        try:
-                            # Mandiamo una richiesta vuota con keep_alive=0 per liberare la RAM
-                            async with httpx.AsyncClient() as client:
-                                await client.post(
-                                    f"{self.base_url}/api/chat",
-                                    json={
-                                        "model": self.current_model,
-                                        "messages": [],
-                                        "keep_alive": 0,
-                                    },
-                                    timeout=5.0,
-                                )
-                        except Exception as exc:
-                            # Loggiamo l'errore in modalità silente per non bloccare il caricamento del successivo
-                            print(f"Errore durante l'unload: {exc}")
-
-                    # 2. Impostiamo il nuovo modello attivo
-                    self.current_model = event.model
+                try:
+                    await self._handle_event(event)
+                except Exception as exc:
+                    # Un bug in un singolo branch non deve piu' uccidere in
+                    # silenzio l'intero task run(): logghiamo e continuiamo
+                    # a drenare il bus invece di lasciar morire il gateway
+                    # (regressione che ha causato la sparizione permanente
+                    # di "Interrogazione modello..." dopo la selezione di
+                    # un modello).
                     await self._bus.publish(
                         StatusEvent(
-                            text=f"Modello impostato su: {event.model}", level="info"
-                        )
-                    )
-                elif isinstance(event, ClearHistoryEvent):
-                    self.history = [{"role": "system", "content": SYSTEM_PROMPT}]
-                    await self._bus.publish(
-                        StatusEvent(
-                            text="Cronologia chat e contesto svuotati.", level="info"
-                        )
-                    )
-                elif isinstance(event, PiConfigEvent):
-                    self.pi_ip = event.pi_ip
-                    self.base_url = f"http://{event.pi_ip}:11434"
-                    await self._bus.publish(
-                        StatusEvent(
-                            text=f"Routing aggiornato: {self.base_url}", level="info"
+                            text=f"Errore interno nel gateway LLM: {exc}",
+                            level="error",
                         )
                     )
                 self._queue.task_done()
         finally:
             await self._client.aclose()
 
+    async def _handle_event(self, event: Any) -> None:
+        if isinstance(event, UserMessageEvent):
+            await self._on_user_message(event)
+        elif isinstance(event, EnrichedChatEvent):
+            await self._on_enriched_chat(event)
+        elif isinstance(event, ToolResultEvent):
+            fut = self._pending_tool_calls.pop(event.call_id, None)
+            if fut and not fut.done():
+                fut.set_result(event)
+        elif isinstance(event, ModelSelectedEvent):
+            # 1. Se c'era un modello attivo, forziamo lo scaricamento prima di cambiare
+            if self.current_model and self.current_model != event.model:
+                await self._bus.publish(
+                    StatusEvent(
+                        text=f"Scaricamento modello precedente ({self.current_model})...",
+                        level="info",
+                    )
+                )
+                try:
+                    # Mandiamo una richiesta vuota con keep_alive=0 per liberare la RAM
+                    async with httpx.AsyncClient() as client:
+                        await client.post(
+                            f"{self.base_url}/api/chat",
+                            json={
+                                "model": self.current_model,
+                                "messages": [],
+                                "keep_alive": 0,
+                            },
+                            timeout=5.0,
+                        )
+                except Exception as exc:
+                    # Loggiamo l'errore in modalità silente per non bloccare il caricamento del successivo
+                    print(f"Errore durante l'unload: {exc}")
+
+            # 2. Impostiamo il nuovo modello attivo (sia current_model,
+            # usato per il tracking dell'unload, sia model, che e'
+            # l'unico campo letto da _on_user_message/_converse)
+            self.current_model = event.model
+            self.model = event.model
+            await self._bus.publish(
+                StatusEvent(text=f"Modello impostato su: {event.model}", level="info")
+            )
+        elif isinstance(event, ClearHistoryEvent):
+            self.history = [{"role": "system", "content": SYSTEM_PROMPT}]
+            await self._bus.publish(
+                StatusEvent(text="Cronologia chat e contesto svuotati.", level="info")
+            )
+        elif isinstance(event, PiConfigEvent):
+            self.pi_ip = event.pi_ip
+            self.base_url = f"http://{event.pi_ip}:11434"
+            await self._bus.publish(
+                StatusEvent(text=f"Routing aggiornato: {self.base_url}", level="info")
+            )
+
     async def _on_user_message(self, event: UserMessageEvent) -> None:
+        await self._start_conversation_turn(event.content)
+
+    async def _on_enriched_chat(self, event: EnrichedChatEvent) -> None:
+        # Prodotto da RAGService: e' il prompt originale dell'utente
+        # arricchito col contesto recuperato da SQLite (o, in caso di
+        # fallback, il solo prompt originale se il recupero fallisce).
+        await self._start_conversation_turn(event.prompt)
+
+    async def _start_conversation_turn(self, content: str) -> None:
         if not self.model:
             await self._bus.publish(
                 StatusEvent(
@@ -132,7 +173,7 @@ class LLMGatewayService:
                 )
             )
             return
-        self.history.append({"role": "user", "content": event.content})
+        self.history.append({"role": "user", "content": content})
         await self._converse()
 
     async def _converse(self) -> None:

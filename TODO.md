@@ -62,10 +62,17 @@ eventuale training).
 > Waveshare). Su Raspberry Pi OS Lite 64-bit (Debian 13 Trixie) questi script
 > sovrascrivono `/boot/firmware/config.txt` con parametri 32-bit incompatibili
 > col kernel ARM64 e possono bloccare il boot; inoltre il `.dtbo` che si
-> aspettano spesso non è presente in `/boot/firmware/overlays/`, quindi
-> `/dev/fb1` non viene mai creato. Il kernel include già un overlay nativo
-> (`piscreen`) compatibile con i controller ILI9486/ILI9341 via SPI — è la
-> via pulita e va usata al posto dei driver di terze parti.
+> aspettano spesso non è presente in `/boot/firmware/overlays/`, quindi il
+> framebuffer del TFT non viene mai creato. Il kernel include già un overlay
+> nativo (`piscreen`) compatibile con i controller ILI9486/ILI9341 via SPI —
+> è la via pulita e va usata al posto dei driver di terze parti.
+
+> **Architettura attuale:** il rendering (Pillow/numpy → RGB565) avviene sul
+> **laptop** in `TFTDisplayService`; il Pi riceve solo lo stream TCP grezzo
+> (porta `9999`) via il demone `fb_listener.py` e lo scrive su `/dev/fb0`.
+> Il Pi *non* ha bisogno di Pillow/numpy installati.
+
+### 4a. Setup hardware sul Pi
 
 - [ ] Collegare fisicamente il TFT 3.5" ILI9486 sui pin SPI/GPIO
 - [ ] Editare `/boot/firmware/config.txt` (`sudo nano /boot/firmware/config.txt`),
@@ -79,26 +86,62 @@ eventuale training).
   (`speed=16000000` = 16 MHz, per stabilità del segnale senza artefatti;
   `rotate=90` = landscape — valori accettati: `0`, `90`, `180`, `270`)
 - [ ] `sudo reboot`
-- [ ] Verificare che compaia `/dev/fb1`: `ls -la /dev/fb*` — atteso `fb0`
-      (HDMI) e `fb1` (TFT SPI), entrambi `crw-rw---- root video`
+- [ ] Verificare che compaia `/dev/fb0`: `ls -la /dev/fb*`, `crw-rw---- root video`
 - [ ] `sudo usermod -a -G spi,gpio,video noya`
 - [ ] `newgrp video` (o logout/login/reboot) perché il gruppo abbia effetto
       nella sessione corrente
-- [ ] Test rumore casuale su `/dev/fb1` (risoluzione 320x480, RGB565):
+- [ ] Test rumore casuale su `/dev/fb0` (risoluzione 320x480, RGB565), da
+      eseguire manualmente **prima** di affidarsi al listener, solo per
+      confermare che il framebuffer scrive correttamente sul TFT:
 ```bash
-  python3 -c 'import numpy as np; open("/dev/fb1", "wb").write((np.random.rand(320, 480, 1) * 65535).astype("<u2").tobytes())'
+  python3 -c 'import numpy as np; open("/dev/fb0", "wb").write((np.random.rand(320, 480, 1) * 65535).astype("<u2").tobytes())'
 ```
   Esito positivo: pixel colorati casuali ("effetto neve") sullo schermo.
+  Questo test usa numpy solo temporaneamente sul Pi (`pip install
+  --break-system-packages numpy`); non serve per l'esecuzione normale.
 - [ ] Test reset a nero:
 ```bash
-  python3 -c 'open("/dev/fb1", "wb").write(bytes(320 * 480 * 2))'
+  python3 -c 'open("/dev/fb0", "wb").write(bytes(320 * 480 * 2))'
 ```
   Esito positivo: schermo torna nero immediatamente.
-- [ ] Installare le dipendenze di rendering sul Pi:
+
+### 4b. Demone `fb_listener.py` + servizio systemd sul Pi
+
+- [ ] Copiare `fb_listener.py` (root del repo) sul Pi:
 ```bash
-  pip install --break-system-packages pillow numpy
-  # oppure, se raspyCode gira anche sul Pi: pipx install ".[tft]"
+  scp fb_listener.py noya@10.42.0.2:/home/noya/
 ```
+- [ ] Copiare lo unit file già tracciato nel repo (`systemd/fb_listener.service`),
+      invece di ricrearlo a mano ogni volta:
+```bash
+  scp systemd/fb_listener.service noya@10.42.0.2:/tmp/
+  # poi sul Pi:
+  sudo mv /tmp/fb_listener.service /etc/systemd/system/fb_listener.service
+```
+- [ ] Abilitarlo e avviarlo:
+```bash
+  sudo systemctl daemon-reload
+  sudo systemctl enable fb_listener.service
+  sudo systemctl start fb_listener.service
+  sudo systemctl status fb_listener.service   # deve mostrare active (running)
+```
+- [ ] Verificare i log in caso di problemi: `sudo journalctl -u fb_listener.service -f`
+- [ ] Pronto soccorso se la porta 9999 resta occupata da una connessione zombie:
+```bash
+  sudo fuser -k 9999/tcp
+  sudo systemctl restart fb_listener.service
+```
+
+### 4c. Dipendenze di rendering sul laptop
+
+- [ ] Iniettare Pillow/numpy nel venv isolato creato da `pipx` (non sono
+      dipendenze core del pacchetto, servono solo al rendering):
+```bash
+  pipx inject raspycode pillow numpy
+```
+- [ ] Avviare `raspycode` sul laptop e verificare che il TFT mostri "In
+      attesa..." e poi "SYSTEM BOOT COMPLETED" dopo ~3s, senza aver lanciato
+      nulla manualmente sul Pi oltre al servizio systemd
 
 ## 5. Laptop — installazione raspyCode
 
@@ -152,30 +195,40 @@ eventuale training).
 - [ ] `ruff check .` e `pytest tests/ -v` puliti prima di ogni push (la CI
       in `.github/workflows/ci.yml` li rilancia comunque su ogni PR)
 
-## 8. Raspberry Pi — Stack RAG (Ollama Embedding + SQLite DB locale)
+## 8. Laptop — Stack RAG (SQLite locale + Ollama Embedding sul Pi)
 
-- [ ] Scaricare il modello di embedding leggero su Ollama (tramite wlan0):
+- [ ] Verificare che il link Ethernet diretto laptop → Pi sia attivo e che
+      `http://10.42.0.2:11434` sia raggiungibile dal laptop.
+- [ ] Scaricare il modello di embedding sul Pi:
   ```bash
   ollama pull nomic-embed-text
   ```
-
-* [ ] Installare le dipendenze necessarie per il calcolo vettoriale in locale nel venv:
-```bash
-pip install numpy httpx
-
-```
-
-* [ ] Verificare le prestazioni del servizio di embedding sul Pi da laptop:
-```bash
-curl [http://10.42.0.2:11434/api/embeddings](http://10.42.0.2:11434/api/embeddings) -d '{
-  "model": "nomic-embed-text",
-  "prompt": "Test sequenza genomica AGCT"
-}'
-
-```
-
-* [ ] Registrare il nuovo microservizio `RAGService` all'interno di `raspyCode/main.py` agganciandolo al loop `asyncio` e al bus condiviso.
-* [ ] Popolare il database SQLite (`raspycode_rag.db`) tramite un piccolo script di ingestione che legga file di testo/documentazione e inserisca i BLOB vettoriali quantizzati nella tabella `documents`.
+- [ ] Verificare l'endpoint di embedding dal laptop:
+  ```bash
+  curl http://10.42.0.2:11434/api/embeddings -d '{
+    "model": "nomic-embed-text",
+    "prompt": "Test sequenza genomica AGCT"
+  }'
+  ```
+- [ ] Mettere i documenti da indicizzare nella directory `docs_rag/` sul
+      laptop.
+- [ ] Eseguire l'ingestion dal laptop:
+  ```bash
+  python3 ingest.py
+  ```
+- [ ] Verificare che il DB finale sia presente sul laptop in
+      `~/.raspycode/raspycode_rag.db` (o nel percorso configurato con
+      `RASPY_RAG_DB`).
+- [ ] Verificare che il DB venga ricostruito atomicamente: se Ollama viene
+      spento durante l'ingestion, il DB precedente deve rimanere utilizzabile.
+- [ ] Non creare una copia del DB sul Pi e non usare sincronizzazioni via
+      `scp`/SSH: il Pi ospita Ollama e i modelli, il laptop ospita lo stato
+      applicativo RAG.
+- [ ] Registrare il nuovo microservizio `RAGService` all'interno di
+      `raspyCode/main.py` agganciandolo al loop `asyncio` e al bus condiviso.
+- [ ] Popolare il database SQLite (`~/.raspycode/raspycode_rag.db`) tramite
+      `ingest.py`, che legge i documenti dal laptop e inserisce i BLOB vettoriali
+      nella tabella `documents` usando Ollama remoto sul Pi.
 
 ## 9. Raspberry Pi — Esposizione bioCli come MCP Server (Model Context Protocol)
 
@@ -203,13 +256,3 @@ python -m raspyCode.mcp_server
 * [ ] Assicurarsi che `LLMGatewayService` sottoscriva gli eventi `EnrichedChatEvent` (prodotti da `RAGService`) al posto del semplice `UserChatEvent`.
 * [ ] Verificare che in caso di fallimento o database SQLite vuoto, il `RAGService` inoltri comunque la domanda utente senza interruzioni di servizio.
 * [ ] Eseguire la suite di test locali con `pytest tests/ -v` per garantire che l'inserimento dei nuovi servizi non causi regressioni nelle code di `EventBus`.
-
-```
----
-
-Per aiutarti a visualizzare come si comporterà `RAGService` sul tuo Raspberry Pi prima di avviare il loop in Python, ho configurato una simulazione interattiva. Puoi modificare il prompt di test per verificare come il punteggio di similarità (coseno) selezioni e ordini i segmenti biologici all'interno del database SQLite locale.
-
-```json?chameleon
-{"component":"LlmGeneratedComponent","props":{"height":"600px","prompt":"Create an interactive educational simulator in Italian titled 'Simulatore RAGService (SQLite + Ollama Embedding)'. The simulator explains how the RAG microservice converts an input prompt into vector embeddings and matches them against SQLite records using cosine similarity. Use standard layout. Include a text input field for 'Domanda Utente' pre-filled with 'Come si calcola la percentuale di Guanina e Citosina?'. Include a slider to set the similarity threshold (from 0.00 to 1.00, default 0.65). Include a dynamic table or list representing SQLite DB records with sample genomics/bioinformatics chunks (e.g. GC content definitions, Hamming distance explanations, DNA to RNA transcription rules). When the user changes the query or threshold, dynamically compute and display simulated cosine similarity scores for each DB chunk, highlighting the chunks that exceed the threshold and are injected into the 'EnrichedChatEvent' for the LLM. Add clean visual differentiation for selected vs rejected chunks.","id":"im_0e533bf4040a7cae"}}
-
-```

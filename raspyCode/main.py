@@ -12,6 +12,7 @@ from .core.events import StatusEvent
 from .services.connectivity_service import ConnectivityService
 from .services.hardware import HardwareDetectionService
 from .services.llm_gateway_service import LLMGatewayService
+from .services.rag_service import RAGService
 from .services.system_stats_service import SystemStatsService
 from .services.tool_executor_service import ToolExecutorService
 from .ui.frontend_service import RaspyCodeApp
@@ -42,8 +43,9 @@ async def main() -> None:
     gateway = LLMGatewayService(bus, pi_ip=pi_ip, model=model)
     executor = ToolExecutorService(bus)
     connectivity = ConnectivityService(bus, pi_ip=pi_ip)
+    rag = RAGService(bus, ollama_host=f"http://{pi_ip}:11434")
 
-    services = [gateway.run(), executor.run(), connectivity.run()]
+    services = [gateway.run(), executor.run(), connectivity.run(), rag.run()]
 
     stats_service = SystemStatsService(bus)
     services.append(stats_service.run())

@@ -20,7 +20,7 @@ Il pacchetto è organizzato a microservizi (Domain-Driven), tutti collegati a un
 | `LLMGatewayService` | `services/llm_gateway_service.py` | Client Ollama (`/api/chat`, streaming + tool-calling) |
 | `ToolExecutorService` | `services/tool_executor_service.py` | Esegue i tool tramite il `ToolRegistry` condiviso (`tools/`), gestendo timeout e pubblicazione risultati |
 | `ConnectivityService` | `services/connectivity_service.py` | Healthcheck periodico verso Ollama (`/api/tags`) e fetch modelli disponibili |
-| `TFTDisplayService` | `services/display_service.py` | Rendering di stato su `/dev/fb1` (ILI9486 480x320), auto-disabilitante |
+| `TFTDisplayService` | `services/display_service.py` | Gira sul laptop: compone i frame di stato (Pillow/numpy) e li streamma via TCP a `fb_listener.py` sul Pi, che li scrive su `/dev/fb0` (ILI9486 480x320) |
 | `HardwareDetectionService` | `services/hardware.py` | Rileva ROCm / CUDA / CPU-only all'avvio |
 | `EventBus` | `core/event_bus.py` | Bus pub/sub asyncio, sottoscrizione tipizzata opzionale, backpressure via code con maxsize |
 | `ToolRegistry` | `tools/registry.py` | Unica fonte di verita' sui tool disponibili: schema Ollama, esecuzione ed esposizione MCP derivano tutte da qui |
@@ -33,6 +33,8 @@ Il pacchetto è organizzato a microservizi (Domain-Driven), tutti collegati a un
 ├── README.md
 ├── requirements.txt
 ├── cleanCache.sh
+├── fb_listener.py               <- Demone TCP da eseguire sul Pi: riceve i frame
+│                                   dal laptop e li scrive su /dev/fb0 (vedi sotto)
 └── raspyCode/                  <- Pacchetto Python effettivo
     ├── __init__.py
     ├── main.py                 <- Entry point (start())
@@ -195,6 +197,74 @@ per chiamata (istanziato dentro l'handler, mai a livello di modulo).
   non deve poter eseguire comandi di sistema sulla macchina che ospita
   raspyCode.
 
+## Note su RAG (SQLite) e ingestion dal laptop
+
+`RAGService` legge un DB **SQLite locale** sulla macchina che esegue raspyCode.
+Il database non e' un servizio di rete: deve quindi esistere fisicamente sul
+laptop, dove gira la TUI e dove viene eseguito `RAGService`.
+
+Il percorso predefinito e':
+
+```text
+~/.raspycode/raspycode_rag.db
+```
+
+Sovrascrivibile con `RASPY_RAG_DB=/percorso/custom.db`.
+
+### Architettura consigliata
+
+L'ingestion viene eseguita **sul laptop**. Gli embedding vengono richiesti al
+modello `nomic-embed-text` eseguito da Ollama sul Raspberry Pi tramite il link
+Ethernet dedicato:
+
+```text
+Laptop                         Raspberry Pi
+  |                                 |
+  | -- HTTP embedding request ----> | Ollama :11434
+  | <--------- vector ------------- |
+  |                                 |
+  +--> ~/.raspycode/raspycode_rag.db
+```
+
+In questo modo:
+
+- il DB viene scritto direttamente nella sua posizione definitiva;
+- non esiste una seconda copia del DB sul Pi;
+- non servono `scp`, SSH o script di sincronizzazione;
+- non e' possibile dimenticare una sincronizzazione e usare dati RAG obsoleti;
+- una nuova ingestion sostituisce il DB solo quando e' stata completata con
+  successo.
+
+### Eseguire l'ingestion
+
+Dal laptop, nella root del repository, con i documenti dentro `docs_rag/`:
+
+```bash
+python3 ingest.py
+```
+
+Per personalizzare il setup:
+
+| Variabile | Default | Descrizione |
+| --- | --- | --- |
+| `RASPY_RAG_DB` | `~/.raspycode/raspycode_rag.db` | Percorso del DB SQLite sul laptop |
+| `RASPY_OLLAMA_URL` | `http://10.42.0.2:11434/api/embeddings` | Endpoint Ollama sul Pi |
+| `RASPY_EMBEDDING_MODEL` | `nomic-embed-text` | Modello usato per gli embedding |
+| `RASPY_DOCS_DIR` | `docs_rag` | Directory locale dei documenti da indicizzare |
+| `RASPY_EMBEDDING_TIMEOUT` | `120` | Timeout HTTP per singola richiesta, in secondi |
+
+Lo script costruisce un DB temporaneo nella stessa directory del DB finale e
+lo pubblica con una sostituzione atomica al termine. Se Ollama non e'
+raggiungibile o un documento causa un errore, il DB RAG precedente rimane
+intatto.
+
+`ingest.py` ricostruisce il DB da zero a ogni esecuzione: rieseguire il comando
+e' quindi sicuro e non crea duplicati dei chunk precedenti.
+
+Il file `scripts/sync_rag_db.sh` e' stato rimosso perche' non fa piu' parte
+dell'architettura: il DB non viene mai generato sul Pi e non deve essere
+sincronizzato.
+
 ## Pulizia __pycache__
 
 ```bash
@@ -204,21 +274,116 @@ per chiamata (istanziato dentro l'handler, mai a livello di modulo).
 
 Rimuove ricorsivamente tutte le cartelle `__pycache__` e i `.pyc` orfani.
 
-## Note su raspyDisplay
+## Note su raspyDisplay (streaming TCP laptop → Pi)
 
-`TFTDisplayService` scrive direttamente su `/dev/fb1` convertendo un canvas
-Pillow in RGB565 via `numpy`, senza script Bash o file temporanei intermedi.
-Se il framebuffer non esiste (es. esecuzione su laptop, o Pi senza HAT) il servizio
-si disabilita da solo, continuando a drenare la coda eventi senza mai far
-crashare l'agente o accumulare memoria zombie.
+A differenza della versione iniziale (in cui `TFTDisplayService` scriveva
+direttamente su `/dev/fb1` locale), l'architettura attuale sposta il
+**rendering sul laptop** e la **scrittura sul framebuffer sul Pi**,
+collegati da un semplice stream TCP sulla porta `9999`:
 
-Config hardware di riferimento (TFT 3.5" ILI9486, 480x320):
+```text
+Laptop (orion)                              Raspberry Pi 5
+┌──────────────────────────┐                 ┌───────────────────────────┐
+│ TFTDisplayService        │   TCP :9999     │ fb_listener.py            │
+│ (Pillow + numpy → RGB565)│ ─────────────▶  │ (systemd service)         │
+│ services/display_service │  frame 307200B  │ scrive su /dev/fb0        │
+└──────────────────────────┘                 └───────────────────────────┘
+```
+
+Motivazione: il laptop ha CPU/RAM abbondanti per comporre i frame (testo di
+stato, ultima query, tool in esecuzione, statistiche di sistema da
+`SystemStatsService`), mentre il Pi si limita a un demone leggero che scrive
+i byte ricevuti sul framebuffer — nessuna dipendenza da Pillow/numpy lato Pi.
+
+### Lato laptop: `TFTDisplayService`
+
+* Mantiene una connessione TCP persistente verso il Pi in un thread separato
+  (`_maintain_connection`), con riconnessione automatica ogni 3s se cade.
+* Ad ogni evento rilevante (`UserMessageEvent`, `StatusEvent`,
+  `LLMToolCallEvent`, `ToolResultEvent`, `SystemStatsEvent`) ricompone il
+  canvas e lo invia in un thread "fire-and-forget" (`_send_frame`), per non
+  bloccare mai il loop `asyncio` principale.
+* Se `Pillow`/`numpy` non sono installati nel venv del laptop, si disabilita
+  da solo (nessun crash).
+* **Dipendenze da installare nel venv `pipx` del laptop** (non sono nelle
+  dipendenze core del pacchetto, dato che servono solo per il rendering):
+
+  ```bash
+  pipx inject raspycode pillow numpy
+  ```
+
+### Lato Pi: `fb_listener.py` + servizio systemd
+
+`fb_listener.py` (nella root del repo) è un demone standalone, senza
+dipendenze esterne, da eseguire **sul Raspberry Pi**:
+
+```bash
+# copia lo script sul Pi, es. in /home/noya/fb_listener.py
+scp fb_listener.py noya@10.42.0.2:/home/noya/
+```
+
+Per farlo partire automaticamente al boot del Pi, usa lo unit file già
+tracciato nel repo (`systemd/fb_listener.service`) invece di ricopiarlo a
+mano:
+
+```bash
+# dal laptop, copia anche lo unit file sul Pi
+scp systemd/fb_listener.service noya@10.42.0.2:/tmp/
+
+# sul Pi
+sudo mv /tmp/fb_listener.service /etc/systemd/system/fb_listener.service
+sudo systemctl daemon-reload
+sudo systemctl enable fb_listener.service
+sudo systemctl start fb_listener.service
+
+# verifica che sia attivo
+sudo systemctl status fb_listener.service
+```
+
+Contenuto di riferimento di `systemd/fb_listener.service`:
+
+```ini
+[Unit]
+Description=raspyCode TFT Framebuffer Socket Listener
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /home/noya/fb_listener.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`User=root` è necessario perché la scrittura diretta su `/dev/fb0` richiede
+permessi che l'appartenenza ai gruppi `spi,gpio,video` da sola non copre in
+tutte le configurazioni; in alternativa si può provare a far girare il
+servizio come `noya` con i permessi sul framebuffer regolati via `udev`
+(`SUBSYSTEM=="graphics", KERNEL=="fb0", GROUP="video", MODE="0660"`), ma
+`root` resta l'opzione più semplice per un demone locale su una macchina non
+esposta.
+
+### Comandi di pronto soccorso (Pi)
+
+Se la porta `9999` resta occupata da una connessione zombie, o Ollama va in
+stallo (bloccando indirettamente anche il caricamento del modello per la
+chat):
+
+```bash
+sudo fuser -k 9999/tcp         # libera la porta TCP del listener
+sudo systemctl restart fb_listener.service
+sudo systemctl restart ollama  # riavvia il backend LLM
+```
+
+### Config hardware di riferimento (TFT 3.5" ILI9486, 480x320)
 
 ```
 # /boot/firmware/config.txt
 dtparam=spi=on
 dtoverlay=tft35a:rotate=90
-
 ```
 
 ```bash

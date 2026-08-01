@@ -49,3 +49,4 @@ pipelines.json
 Thumbs.db
 
 .coverage
+.raspycode_rag.db
