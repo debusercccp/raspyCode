@@ -41,8 +41,8 @@ SYSTEM_PROMPT = (
     "conciso e tecnico quando si parla di scienza o bioinformatica."
 )
 
-GATEWAY_TOOL_TIMEOUT_SECONDS = 40.0
-OLLAMA_HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=300.0, write=10.0, pool=10.0)
+GATEWAY_TOOL_TIMEOUT_SECONDS = 1790.0
+OLLAMA_HTTP_TIMEOUT = httpx.Timeout(connect=10.0, read=1800.0, write=10.0, pool=10.0)
 MAX_HISTORY_MESSAGES = 24
 _DEFAULT_REGISTRY = build_default_registry()
 TOOL_SCHEMAS: list[dict[str, Any]] = _DEFAULT_REGISTRY.ollama_schemas()
