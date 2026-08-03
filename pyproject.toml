@@ -64,7 +64,6 @@ source = ["raspyCode"]
 omit = [
     "raspyCode/main.py",
     "raspyCode/ui/*",
-    "raspyCode/services/display_service.py",
     "raspyCode/services/connectivity_service.py",
     "raspyCode/services/llm_gateway_service.py",
     "raspyCode/services/system_stats_service.py"

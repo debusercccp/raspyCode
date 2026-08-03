@@ -67,10 +67,13 @@ eventuale training).
 > nativo (`piscreen`) compatibile con i controller ILI9486/ILI9341 via SPI —
 > è la via pulita e va usata al posto dei driver di terze parti.
 
-> **Architettura attuale:** il rendering (Pillow/numpy → RGB565) avviene sul
-> **laptop** in `TFTDisplayService`; il Pi riceve solo lo stream TCP grezzo
-> (porta `9999`) via il demone `fb_listener.py` e lo scrive su `/dev/fb0`.
-> Il Pi *non* ha bisogno di Pillow/numpy installati.
+> **Architettura attuale (nuova):** il rendering custom Python è stato
+> rimosso (prima locale via Pillow/numpy, poi lo stream TCP laptop → Pi con
+> `TFTDisplayService` + `fb_listener.py` — entrambi eliminati dal repo). Il
+> TFT ora mostra `htop` in esecuzione **direttamente sul Pi**, agganciando
+> una console Linux (`fbcon`) al framebuffer del TFT e lanciandoci sopra
+> `htop` via un servizio systemd indipendente da raspyCode. Nessuna
+> dipendenza Pillow/numpy, nessun socket da mantenere.
 
 ### 4a. Setup hardware sul Pi
 
@@ -87,12 +90,11 @@ eventuale training).
   `rotate=90` = landscape — valori accettati: `0`, `90`, `180`, `270`)
 - [ ] `sudo reboot`
 - [ ] Verificare che compaia `/dev/fb0`: `ls -la /dev/fb*`, `crw-rw---- root video`
-- [ ] `sudo usermod -a -G spi,gpio,video noya`
+- [ ] `sudo usermod -a -G spi,gpio,video,tty noya`
 - [ ] `newgrp video` (o logout/login/reboot) perché il gruppo abbia effetto
       nella sessione corrente
-- [ ] Test rumore casuale su `/dev/fb0` (risoluzione 320x480, RGB565), da
-      eseguire manualmente **prima** di affidarsi al listener, solo per
-      confermare che il framebuffer scrive correttamente sul TFT:
+- [ ] Test rumore casuale su `/dev/fb0` (risoluzione 320x480, RGB565), solo
+      per confermare che il framebuffer scrive correttamente sul TFT:
 ```bash
   python3 -c 'import numpy as np; open("/dev/fb0", "wb").write((np.random.rand(320, 480, 1) * 65535).astype("<u2").tobytes())'
 ```
@@ -105,43 +107,24 @@ eventuale training).
 ```
   Esito positivo: schermo torna nero immediatamente.
 
-### 4b. Demone `fb_listener.py` + servizio systemd sul Pi
+### 4b. Console `htop` sul framebuffer TFT (gestita da Mbarocc)
 
-- [ ] Copiare `fb_listener.py` (root del repo) sul Pi:
-```bash
-  scp fb_listener.py noya@10.42.0.2:/home/noya/
-```
-- [ ] Copiare lo unit file già tracciato nel repo (`systemd/fb_listener.service`),
-      invece di ricrearlo a mano ogni volta:
-```bash
-  scp systemd/fb_listener.service noya@10.42.0.2:/tmp/
-  # poi sul Pi:
-  sudo mv /tmp/fb_listener.service /etc/systemd/system/fb_listener.service
-```
-- [ ] Abilitarlo e avviarlo:
-```bash
-  sudo systemctl daemon-reload
-  sudo systemctl enable fb_listener.service
-  sudo systemctl start fb_listener.service
-  sudo systemctl status fb_listener.service   # deve mostrare active (running)
-```
-- [ ] Verificare i log in caso di problemi: `sudo journalctl -u fb_listener.service -f`
-- [ ] Pronto soccorso se la porta 9999 resta occupata da una connessione zombie:
-```bash
-  sudo fuser -k 9999/tcp
-  sudo systemctl restart fb_listener.service
-```
+Task lasciato volutamente a carico dell'utente una volta arrivato l'hardware
+(dipende da dettagli hardware/kernel non verificabili senza il Pi fisico):
 
-### 4c. Dipendenze di rendering sul laptop
-
-- [ ] Iniettare Pillow/numpy nel venv isolato creato da `pipx` (non sono
-      dipendenze core del pacchetto, servono solo al rendering):
-```bash
-  pipx inject raspycode pillow numpy
-```
-- [ ] Avviare `raspycode` sul laptop e verificare che il TFT mostri "In
-      attesa..." e poi "SYSTEM BOOT COMPLETED" dopo ~3s, senza aver lanciato
-      nulla manualmente sul Pi oltre al servizio systemd
+- [ ] Installare `htop` e `con2fbmap`: `sudo apt install -y htop con2fbmap`
+- [ ] Verificare il mapping VT → framebuffer con `con2fbmap <vt> <fb>`
+      (es. `sudo con2fbmap 7 0` per legare la VT7 a `/dev/fb0`)
+- [ ] Creare il servizio systemd che lega una VT dedicata al framebuffer del
+      TFT e ci lancia `htop` in autologin/autostart (vedi bozza di unit file
+      discussa in chat, da adattare a `fb0` invece di `fb1` e all'utente
+      `noya`)
+- [ ] Abilitare e avviare il servizio, verificare `systemctl status`
+- [ ] Confermare che `htop` resti visibile e aggiornato sul TFT anche se
+      `raspycode` non è in esecuzione o crasha (è il punto di questa
+      architettura: indipendenza dal processo dell'agente)
+- [ ] Verificare leggibilità del testo di `htop` a 480x320 sulla console
+      reale (dimensione font, eventuale necessità di `setfont`)
 
 ## 5. Laptop — installazione raspyCode
 

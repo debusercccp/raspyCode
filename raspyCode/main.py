@@ -17,13 +17,6 @@ from .services.system_stats_service import SystemStatsService
 from .services.tool_executor_service import ToolExecutorService
 from .ui.frontend_service import RaspyCodeApp
 
-try:
-    from .services.display_service import TFTDisplayService
-
-    _HAS_DISPLAY_MODULE = True
-except ImportError:
-    _HAS_DISPLAY_MODULE = False
-
 
 async def splash_screen_sequence(bus: EventBus):
     # 2. Aspetta 3 secondi
@@ -49,9 +42,6 @@ async def main() -> None:
 
     stats_service = SystemStatsService(bus)
     services.append(stats_service.run())
-
-    if _HAS_DISPLAY_MODULE:
-        services.append(TFTDisplayService(bus).run())
 
     hw_mode = await HardwareDetectionService.detect()
     app.hw_mode = hw_mode

@@ -43,7 +43,7 @@ class ToolResultEvent(Event):
 
 @dataclass
 class StatusEvent(Event):
-    """Stato di sistema, consumato da TFTDisplayService e dalla TUI."""
+    """Stato di sistema, consumato dalla TUI."""
 
     text: str
     level: str = "info"  # info | warning | error
