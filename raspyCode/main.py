@@ -36,7 +36,11 @@ async def main() -> None:
     app = RaspyCodeApp(bus, pi_ip=pi_ip, model=model)
     gateway = LLMGatewayService(bus, pi_ip=pi_ip, model=model)
     executor = ToolExecutorService(bus)
-    connectivity = ConnectivityService(bus, pi_ip=pi_ip)
+    connectivity = ConnectivityService(
+                                       bus, 
+                                       pi_ip=pi_ip, 
+                                       local_ip=local_ip,
+                                       )
     rag = RAGService(bus, ollama_host=f"http://{pi_ip}:11434")
 
     services = [gateway.run(), executor.run(), connectivity.run(), rag.run()]

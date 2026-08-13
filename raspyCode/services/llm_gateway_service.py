@@ -10,8 +10,8 @@ import httpx
 from ..core.event_bus import EventBus
 from ..core.events import (
     AssistantTokenEvent,
-    ClearHistoryEvent,
     BackendSourceEvent,
+    ClearHistoryEvent,
     EnrichedChatEvent,
     LLMToolCallEvent,
     ModelSelectedEvent,

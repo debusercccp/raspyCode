@@ -24,11 +24,19 @@ class ConnectivityService:
         self._local_ip = local_ip
 
     async def run(self) -> None:
-        asyncio.create_task(self._watch_config())
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            while True:
-                await self._check_once(client)
-                await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+        watch_task = asyncio.create_task(self._watch_config())
+
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                while True:
+                    await self._check_once(client)
+                    await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+        finally:
+            watch_task.cancel()
+            try:
+                await watch_task
+            except asyncio.CancelledError:
+                pass
 
     async def _watch_config(self) -> None:
         while True:
