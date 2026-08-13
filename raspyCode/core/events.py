@@ -107,3 +107,12 @@ class ClearHistoryEvent:
     """Richiede il reset immediato della cronologia di chat nel gateway e nella UI."""
 
     pass
+
+
+@dataclass
+class BackendSourceEvent(Event):
+    """Segnala quale host Ollama sta effettivamente rispondendo alle
+    richieste (Raspberry Pi o fallback locale), pubblicato da
+    ConnectivityService dopo ogni healthcheck riuscito."""
+    host: str
+    is_local: bool = False

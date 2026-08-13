@@ -30,6 +30,7 @@ async def main() -> None:
     bus = EventBus()
 
     pi_ip = os.environ.get("RASPY_PI_IP", "10.42.0.2")
+    local_ip = os.environ.get("RASPY_LOCAL_IP", "127.0.0.1")
     model = os.environ.get("RASPY_MODEL", None)
 
     app = RaspyCodeApp(bus, pi_ip=pi_ip, model=model)

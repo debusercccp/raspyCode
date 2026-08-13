@@ -11,6 +11,7 @@ from ..core.event_bus import EventBus
 from ..core.events import (
     AssistantTokenEvent,
     ClearHistoryEvent,
+    BackendSourceEvent,
     EnrichedChatEvent,
     LLMToolCallEvent,
     ModelSelectedEvent,
@@ -148,6 +149,14 @@ class LLMGatewayService:
             await self._bus.publish(
                 StatusEvent(text="Cronologia chat e contesto svuotati.", level="info")
             )
+        elif isinstance(event, BackendSourceEvent):
+                    if self.pi_ip != event.host:
+                        self.pi_ip = event.host
+                        self.base_url = f"http://{event.host}:11434"
+                        label = "Ollama locale" if event.is_local else f"Raspberry Pi ({event.host})"
+                        await self._bus.publish(
+                            StatusEvent(text=f"Backend attivo: {label}", level="info")
+                        )
         elif isinstance(event, PiConfigEvent):
             self.pi_ip = event.pi_ip
             self.base_url = f"http://{event.pi_ip}:11434"
