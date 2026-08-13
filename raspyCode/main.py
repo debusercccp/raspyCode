@@ -37,8 +37,8 @@ async def main() -> None:
     gateway = LLMGatewayService(bus, pi_ip=pi_ip, model=model)
     executor = ToolExecutorService(bus)
     connectivity = ConnectivityService(
-                                       bus, 
-                                       pi_ip=pi_ip, 
+                                       bus,
+                                       pi_ip=pi_ip,
                                        local_ip=local_ip,
                                        )
     rag = RAGService(bus, ollama_host=f"http://{pi_ip}:11434")
