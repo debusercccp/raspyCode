@@ -1,12 +1,10 @@
 """LLMGatewayService: client verso Ollama (endpoint /api/chat) sul Raspberry Pi."""
-
 import asyncio
 import json
+import os
 import uuid
 from typing import Any
-
 import httpx
-
 from ..core.event_bus import EventBus
 from ..core.events import (
     AssistantTokenEvent,
@@ -22,7 +20,7 @@ from ..core.events import (
 )
 from ..tools import build_default_registry
 
-SYSTEM_PROMPT = (
+SYSTEM_PROMPT_TEMPLATE = (
     "Sei raspyCode, l'assistente personale di 'noya', in esecuzione in locale "
     "su un Raspberry Pi. Sei il suo assistente per qualsiasi cosa: rispondi a "
     "domande di ogni genere (quotidiane, di studio, organizzative, tecniche, "
@@ -38,9 +36,26 @@ SYSTEM_PROMPT = (
     "pertinenti. Se ricevi un contesto RAG recuperato da documenti locali, "
     "usalo per rispondere in modo più preciso, ma se il contesto è vuoto o "
     "irrilevante rispondi comunque basandoti su ciò che sai. "
+    "Stai operando nella working directory: {cwd}. Quando l'utente fa "
+    "riferimento a 'questa cartella', 'qui', file relativi o simili, "
+    "intendili relativi a questo percorso; usa system_run_cmd (es. ls, cat, "
+    "pwd) per ispezionarla quando serve. "
     "Rispondi in italiano, in modo discorsivo per le domande generiche e "
     "conciso e tecnico quando si parla di scienza o bioinformatica."
 )
+
+
+def build_system_prompt(cwd: str | None = None) -> str:
+    """Costruisce il system prompt iniettando la working directory corrente.
+
+    Chiamata ad ogni istanza di LLMGatewayService (quindi ad ogni avvio di
+    raspycode) cosi' da rilevare da dove e' stato lanciato il comando,
+    analogamente a come Claude Code opera sulla cwd del terminale invocante.
+    Un override esplicito e' possibile passando `cwd`, altrimenti si usa
+    `os.getcwd()` al momento dell'istanza.
+    """
+    return SYSTEM_PROMPT_TEMPLATE.format(cwd=cwd or os.getcwd())
+
 
 GATEWAY_TOOL_TIMEOUT_SECONDS = 1790.0
 OLLAMA_HTTP_TIMEOUT = httpx.Timeout(connect=10.0, read=1800.0, write=10.0, pool=10.0)
@@ -65,8 +80,11 @@ class LLMGatewayService:
         # ModelSelectedEvent per sapere se serve scaricare (keep_alive=0)
         # il modello precedentemente caricato prima di attivarne uno nuovo.
         self.current_model: str | None = model
+        # Costruito qui (non a import-time del modulo) cosi' rileva la cwd
+        # reale del processo al momento dell'avvio di raspycode.
+        self.system_prompt = build_system_prompt()
         self.history: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT}
+            {"role": "system", "content": self.system_prompt}
         ]
         self._pending_tool_calls: dict[str, asyncio.Future[ToolResultEvent]] = {}
         self._client = httpx.AsyncClient(timeout=OLLAMA_HTTP_TIMEOUT)
@@ -135,7 +153,6 @@ class LLMGatewayService:
                 except Exception as exc:
                     # Loggiamo l'errore in modalità silente per non bloccare il caricamento del successivo
                     print(f"Errore durante l'unload: {exc}")
-
             # 2. Impostiamo il nuovo modello attivo (sia current_model,
             # usato per il tracking dell'unload, sia model, che e'
             # l'unico campo letto da _on_user_message/_converse)
@@ -145,7 +162,7 @@ class LLMGatewayService:
                 StatusEvent(text=f"Modello impostato su: {event.model}", level="info")
             )
         elif isinstance(event, ClearHistoryEvent):
-            self.history = [{"role": "system", "content": SYSTEM_PROMPT}]
+            self.history = [{"role": "system", "content": self.system_prompt}]
             await self._bus.publish(
                 StatusEvent(text="Cronologia chat e contesto svuotati.", level="info")
             )
@@ -191,7 +208,6 @@ class LLMGatewayService:
         )
         self._trim_history()
         enable_tools = True
-
         while True:
             payload = {
                 "model": self.model,
@@ -200,7 +216,6 @@ class LLMGatewayService:
             }
             if enable_tools:
                 payload["tools"] = TOOL_SCHEMAS
-
             assistant_content = ""
             tool_calls: list[dict[str, Any]] = []
             try:
@@ -234,7 +249,6 @@ class LLMGatewayService:
                     )
                     enable_tools = False
                     continue
-
                 msg = f"Errore comunicazione Ollama ({self.base_url}): {exc}"
                 await self._bus.publish(StatusEvent(text=msg, level="error"))
                 await self._bus.publish(AssistantTokenEvent(content="", done=True))
@@ -248,7 +262,6 @@ class LLMGatewayService:
                 )
                 await self._bus.publish(AssistantTokenEvent(content="", done=True))
                 return
-
             if assistant_content:
                 await self._bus.publish(AssistantTokenEvent(content="", done=True))
             if not tool_calls:
