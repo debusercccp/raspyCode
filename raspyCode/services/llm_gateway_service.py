@@ -4,7 +4,9 @@ import json
 import os
 import uuid
 from typing import Any
+
 import httpx
+
 from ..core.event_bus import EventBus
 from ..core.events import (
     AssistantTokenEvent,
