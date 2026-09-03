@@ -14,7 +14,12 @@ from typing import Any
 import httpx
 
 from ..core.event_bus import EventBus
-from ..core.events import ConnectionStatusEvent, FallbackModeEvent, ModelListEvent, StatusEvent
+from ..core.events import (
+    ConnectionStatusEvent,
+    FallbackModeEvent,
+    ModelListEvent,
+    StatusEvent,
+)
 
 LOCAL_OLLAMA_HOST = "127.0.0.1"
 LOCAL_OLLAMA_PORT = 11434

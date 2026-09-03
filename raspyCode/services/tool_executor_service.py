@@ -11,17 +11,15 @@ MCP esterno, non presenti in bioCli) viene inoltrato li' prima di arrendersi
 con "Tool non riconosciuto". Il fallback e' opzionale e best-effort: se
 `mcp_client` e' None o non connesso, il comportamento e' identico a prima.
 """
-import asyncio
 import random
-import shlex
 from typing import Any
 
 from ..core.event_bus import EventBus
 from ..core.events import LLMToolCallEvent, StatusEvent, ToolResultEvent
+from ..tools.external_bio import run_bio_cli
+from ..tools.file import list_files, read_file, write_file
 from .biotoolkit_dispatch import BIOTOOLKIT_TOOL_NAMES, run_biotoolkit
 from .mcp_client_service import MCPToolClient
-from ..tools.file import write_file, read_file, list_files
-from ..tools.external_bio import run_bio_cli
 
 TOOL_TIMEOUT_SECONDS = 30.0
 

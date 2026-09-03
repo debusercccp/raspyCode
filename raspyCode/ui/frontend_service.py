@@ -6,12 +6,11 @@ import contextlib
 from pathlib import Path
 from typing import ClassVar
 
+from rich.markdown import Markdown
 from textual.app import App, ComposeResult
 from textual.containers import Center, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from rich.markdown import Markdown
-
 from textual.widgets import (
     Header,
     Input,

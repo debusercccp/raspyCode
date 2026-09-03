@@ -1,11 +1,11 @@
 """Inizializzazione del pacchetto bioCli: esposizione delle funzioni pure."""
 
 from .assembly import (
-    greedy_kmer_assembly,
     genome_assembly,
-    orf_finder,
+    greedy_kmer_assembly,
     how_many_seq,
     longest_shared_seq,
+    orf_finder,
     protein_stretch_finder,
 )
 from .io_utils import blast_output, fasta_sampler, fastx_sampler, seq_magic

@@ -17,8 +17,6 @@ from typing import Any
 import httpx
 
 from ..core.event_bus import EventBus
-from ..tools import build_default_registry
-from ..tools.file import write_file
 from ..core.events import (
     AssistantTokenEvent,
     FallbackModeEvent,
@@ -29,6 +27,8 @@ from ..core.events import (
     ToolResultEvent,
     UserMessageEvent,
 )
+from ..tools import build_default_registry
+from ..tools.file import write_file
 
 SYSTEM_PROMPT = (
     "Sei raspyCode, un agente locale per bioinformatica. L'utente e' 'noya'. "

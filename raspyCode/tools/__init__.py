@@ -1,8 +1,8 @@
 from .bio import build_bio_tools
+from .external_bio import build_external_bio_tools
+from .file import build_file_tools
 from .registry import DEFAULT_TOOL_TIMEOUT_SECONDS, ToolDefinition, ToolRegistry
 from .system import SYSTEM_CMD_TIMEOUT_SECONDS, build_system_run_cmd_tool
-from .file import build_file_tools
-from .external_bio import build_external_bio_tools
 
 
 def build_default_registry() -> ToolRegistry:

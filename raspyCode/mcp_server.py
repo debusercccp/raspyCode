@@ -20,7 +20,6 @@ from mcp.server.fastmcp import FastMCP
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from raspyCode.services.biotoolkit_dispatch import (  # noqa: E402
-    BIOTOOLKIT_TOOL_NAMES,
     run_biotoolkit,
 )
 from raspyCode.tools import build_default_registry  # noqa: E402
