@@ -1,0 +1,52 @@
+# =========================
+# Byte-compiled / Optimized
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# =========================
+# Ambienti Virtuali
+# =========================
+.venv/
+venv/
+env/
+ENV/
+
+# =========================
+# Build / Packaging (pyproject.toml / setuptools)
+# =========================
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+
+# =========================
+# Dati locali e Log
+# =========================
+*.log
+.log
+# Ignora le cartelle di output generate dagli script bioCli
+/out/
+/fasta/
+pipelines.json
+
+# =========================
+# IDEs / Editor
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+.coverage
+raspycode_rag.db

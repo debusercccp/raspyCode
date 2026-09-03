@@ -1,0 +1,7 @@
+# Client core (laptop e Pi)
+rich>=13.7
+httpx>=0.27
+
+# Solo sul Raspberry Pi con TFT collegato (TFTDisplayService)
+# Pillow>=10
+# numpy>=1.26

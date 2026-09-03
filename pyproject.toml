@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raspyCode"
+version = "0.1.0"
+description = "Agente locale a microservizi asyncio per bioinformatica con interfaccia Textual"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "noya", email = "noya@local.it" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+    "textual>=0.80.0",  # Interfaccia utente full-screen
+    "httpx>=0.24.0",    # Client HTTP asincrono per Ollama ed healthcheck
+    "rich>=13.0.0",     # Dipendenza nativa di Textual / BioPipeLine
+    "biopython>=1.80",  # Core parsing genomico per gli script bioCli
+    "pandas>=2.0.0",    # Utilizzato da blastOutput.py
+]
+
+[project.optional-dependencies]
+# Estensioni facoltative da compilare solo sul Raspberry Pi con TFT
+tft = [
+    "numpy>=1.24.0",
+    "pillow>=9.5.0",
+]
+
+# SDK per il server/client MCP (mcp_server.py, MCPToolClient). Pinnata su
+# v1 (<2): la v2 dell'SDK ha rinominato/rotto le API usate qui
+# (FastMCP -> MCPServer). MCPToolClient importa mcp in modo lazy e
+# fallisce in modo silenzioso se assente, quindi l'agente resta
+# utilizzabile anche senza questo extra installato (routing locale statico).
+mcp = [
+    "mcp<2",
+]
+
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.0",
+    "mcp<2",
+]
+
+[project.scripts]
+raspycode = "raspyCode.main:start"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["raspyCode", "raspyCode.*"]
+# bioCli e' un sottopacchetto vero (funzioni pure importate in-process da
+# ToolExecutorService), quindi deve restare incluso: niente exclude qui.
+# (In precedenza bioCli era un albero di script CLI standalone eseguiti via
+# subprocess, da cui l'esclusione storica — non piu' valida col refactor
+# a funzioni pure.)
+
+[tool.coverage.run]
+source = ["raspyCode"]
+omit = [
+    "raspyCode/main.py",
+    "raspyCode/ui/*",
+    "raspyCode/services/display_service.py",
+    "raspyCode/services/connectivity_service.py",
+    "raspyCode/services/llm_gateway_service.py",
+    "raspyCode/mcp_server.py",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501", "N999", "BLE001"]
+
+[tool.ruff.lint.per-file-ignores]
+"raspyCode/ui/banner.py" = ["W291"]

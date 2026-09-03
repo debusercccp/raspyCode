@@ -1,0 +1,33 @@
+name: CI / raspyCode
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout del codice
+      uses: actions/checkout@v4
+
+    - name: Setup Python 3.13
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+        cache: "pip"
+
+    - name: Installazione pacchetto e dipendenze di test
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+
+    - name: Validazione statica (Ruff)
+      run: ruff check .
+
+    - name: Test asincroni e Code Coverage
+      run: |
+        pytest --cov=raspyCode --cov-report=term-missing --cov-fail-under=60
