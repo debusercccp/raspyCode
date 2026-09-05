@@ -37,10 +37,6 @@ class LocalOllamaService:
         self._queue = bus.subscribe()
         self._process: asyncio.subprocess.Process | None = None
         self._start_lock = asyncio.Lock()
-        # Evita di riversare lo stesso messaggio di stato nella chat ad ogni
-        # healthcheck del Raspberry. La discovery puo' essere ripetuta, ma
-        # un identico stato non deve generare un nuovo StatusEvent.
-        self._last_published_models: tuple[str, ...] | None = None
 
     async def run(self) -> None:
         try:
@@ -119,11 +115,7 @@ class LocalOllamaService:
 
             if self._process is None or self._process.returncode is not None:
                 env = os.environ.copy()
-                # Il fallback locale DEVE ignorare OLLAMA_HOST eventualmente
-                # impostato per il Raspberry. `setdefault` qui era il bug: se
-                # l'utente aveva OLLAMA_HOST=PI:11434, `ollama serve` poteva
-                # essere configurato sull'endpoint remoto.
-                env["OLLAMA_HOST"] = f"{LOCAL_OLLAMA_HOST}:{LOCAL_OLLAMA_PORT}"
+                env.setdefault("OLLAMA_HOST", f"{LOCAL_OLLAMA_HOST}:{LOCAL_OLLAMA_PORT}")
                 try:
                     self._process = await asyncio.create_subprocess_exec(
                         executable,
@@ -162,81 +154,20 @@ class LocalOllamaService:
             await self._bus.publish(ModelListEvent(models=[]))
             return False
 
-    async def _list_models(self) -> list[str]:
-        """Restituisce i modelli locali usando prima l'API, poi `ollama list`.
-
-        Il comando CLI viene eseguito con OLLAMA_HOST forzato a localhost,
-        quindi una configurazione globale del laptop che punta al Pi non può
-        impedire la discovery locale.
-        """
-        # Se il server locale è già disponibile, usa esclusivamente la sua API.
-        # Questo evita di mischiare una lista reale/cached dell'ambiente con il
-        # risultato della CLI e rende la sorgente dei modelli deterministica.
-        if await self._is_available():
-            url = f"{LOCAL_OLLAMA_URL}/api/tags"
-            try:
-                async with httpx.AsyncClient(timeout=LOCAL_OLLAMA_TIMEOUT, trust_env=False) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                    data: dict[str, Any] = response.json()
-                return [
-                    m.get("name", "")
-                    for m in data.get("models", [])
-                    if m.get("name")
-                ]
-            except (httpx.HTTPError, ValueError, TypeError):
-                return []
-
-        executable = self._find_ollama_executable()
-        if not executable:
-            return []
-        env = os.environ.copy()
-        env["OLLAMA_HOST"] = f"{LOCAL_OLLAMA_HOST}:{LOCAL_OLLAMA_PORT}"
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                executable, "list",
-                cwd=os.getcwd(),
-                env=env,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _stderr = await asyncio.wait_for(proc.communicate(), timeout=LOCAL_OLLAMA_TIMEOUT)
-            if proc.returncode != 0:
-                return []
-            models: list[str] = []
-            for line in stdout.decode("utf-8", errors="replace").splitlines()[1:]:
-                name = line.split(None, 1)[0].strip() if line.split(None, 1) else ""
-                if name:
-                    models.append(name)
-            return models
-        except (OSError, asyncio.TimeoutError):
-            return []
-
     async def _publish_models(self) -> None:
-        models = await self._list_models()
-        fingerprint = tuple(models)
-
-        # ModelListEvent puo' essere ignorato dalla UI se non cambia;
-        # soprattutto, non ripetiamo il messaggio "Ollama locale: N modelli"
-        # ad ogni ConnectionStatusEvent generato dal monitor.
-        if fingerprint == self._last_published_models:
-            return
-
-        self._last_published_models = fingerprint
+        try:
+            async with httpx.AsyncClient(timeout=LOCAL_OLLAMA_TIMEOUT, trust_env=False) as client:
+                response = await client.get(f"{LOCAL_OLLAMA_URL}/api/tags")
+                response.raise_for_status()
+                data: dict[str, Any] = response.json()
+            models = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+        except (httpx.HTTPError, ValueError):
+            models = []
         await self._bus.publish(ModelListEvent(models=models))
-        await self._bus.publish(
-            StatusEvent(
-                text=(f"Ollama locale: {len(models)} modello/i disponibili." if models
-                      else "Ollama locale raggiunto, ma nessun modello trovato."),
-                level="info" if models else "warning",
-            )
-        )
 
     async def stop_if_started(self) -> None:
         process = self._process
         self._process = None
-        self._last_published_models = None
         if process is None or process.returncode is not None:
             return
         try:

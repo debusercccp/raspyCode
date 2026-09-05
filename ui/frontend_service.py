@@ -214,14 +214,6 @@ class RaspyCodeApp(App):
         yield Static(self._status_text(), id="status-bar")
         # yield Footer()
 
-    def on_mount(self) -> None:
-        self.title = "raspyCode"
-        self.sub_title = USER_IDENTITY
-        self.query_one("#chat-input", Input).focus()
-        self._show_initial_history()
-        self.run_worker(self._consume_bus(), exclusive=False)
-
-
     def _show_initial_history(self) -> None:
         if not self._initial_history:
             return
@@ -353,6 +345,36 @@ class RaspyCodeApp(App):
                 self.local_fallback = event.active
 
             self._queue.task_done()
+
+    def on_mount(self) -> None:
+        self.set_interval(0.5, self._refresh_model_list)
+        self._refresh_model_list()
+
+    def _refresh_model_list(self) -> None:
+        """Aggiorna la lista anche se Ollama risponde dopo l'apertura della schermata."""
+        app = self.app
+        models = list(getattr(app, "available_models", []) or [])
+        if models == self._models:
+            return
+        self._models = models
+        with contextlib.suppress(Exception):
+            old = self.query_one("#model-list", ListView)
+            old.remove()
+        with contextlib.suppress(Exception):
+            no_models = self.query_one("#no-models-label", Label)
+            no_models.remove()
+        if not models:
+            self.mount(Label("[yellow]Nessun modello disponibile. In attesa di Ollama...[/]", id="no-models-label"))
+            return
+        view = ListView(
+            *[ListItem(Label(m)) for m in models],
+            id="model-list",
+        )
+        self.mount(view)
+        with contextlib.suppress(Exception):
+            view.focus()
+            if self._current_model in models:
+                view.index = models.index(self._current_model)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "chat-input":

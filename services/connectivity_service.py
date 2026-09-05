@@ -101,29 +101,25 @@ class ConnectivityService:
             await self._publish_local_models(client)
 
     async def _publish_local_models(self, client: httpx.AsyncClient) -> None:
-        """Pubblica esclusivamente lo stato dell'API Ollama locale.
+        """Interroga Ollama in locale (fallback) e pubblica i suoi modelli.
 
-        L'avvio automatico di Ollama e la discovery via CLI sono responsabilità
-        di LocalOllamaService. Qui non eseguiamo ``ollama list`` come ulteriore
-        fallback: se l'API locale non è disponibile, pubblichiamo [] invece di
-        riesumare una lista di modelli precedente o interrogare accidentalmente
-        un Ollama remoto tramite OLLAMA_HOST.
+        Best-effort: se anche Ollama locale non risponde, pubblica una
+        lista vuota cosi' la SettingsScreen mostra il messaggio "nessun
+        modello disponibile" invece di restare bloccata sull'ultima lista
+        del Pi (che a questo punto non e' piu' raggiungibile).
         """
         url = f"http://{LOCAL_OLLAMA_HOST}:{LOCAL_OLLAMA_PORT}/api/tags"
-        models: list[str] = []
         try:
+            # localhost deve bypassare eventuali proxy HTTP(S) ereditati
+            # dall'ambiente: altrimenti httpx puo' mandare la richiesta al
+            # proxy mentre `ollama list` parla direttamente con Ollama.
             async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS, trust_env=False) as local_client:
                 resp = await local_client.get(url)
                 resp.raise_for_status()
                 data = resp.json()
-            models = [
-                m.get("name", "")
-                for m in data.get("models", [])
-                if m.get("name")
-            ]
-        except (httpx.HTTPError, ValueError, TypeError):
-            pass
-
+            models = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+        except (httpx.HTTPError, ValueError):
+            models = []
         await self._bus.publish(ModelListEvent(models=models))
 
     async def _on_check_failure(self) -> None:
