@@ -140,6 +140,80 @@ async def build_tool_schemas(mcp_client: Any | None = None) -> list[dict[str, An
     return build_default_registry().ollama_schemas()
 
 
+def _extract_json_object(text: str) -> dict[str, Any] | None:
+    """Trova e decodifica il primo oggetto JSON bilanciato dentro un testo
+    libero. Usato per intercettare le tool-call 'fantasma': alcuni modelli
+    piccoli, quando il tool-calling nativo di Ollama non scatta, scrivono
+    comunque una tool call ma come testo semplice (es. preceduta o seguita
+    da prosa) invece di popolare il campo tool_calls della risposta.
+
+    A differenza di un json.loads diretto sull'intero messaggio, qui si
+    isola solo la porzione '{...}' bilanciata (rispettando le stringhe e gli
+    escape), cosi' funziona anche se il modello aggiunge testo prima/dopo.
+    """
+    text = text.strip()
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+        return data if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                candidate = text[start:i + 1]
+                try:
+                    data = json.loads(candidate)
+                except json.JSONDecodeError:
+                    return None
+                return data if isinstance(data, dict) else None
+    return None
+
+
+def _pseudo_tool_call_name_and_args(data: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    """Normalizza le varianti piu' comuni con cui un modello impersona una
+    tool call in formato testo: {"name": ..., "arguments": ...} oppure
+    {"function": {"name": ..., "arguments": ...}}."""
+    name = data.get("name")
+    arguments = data.get("arguments")
+    fn = data.get("function")
+    if isinstance(fn, dict):
+        name = fn.get("name", name)
+        arguments = fn.get("arguments", arguments)
+    if arguments is None:
+        arguments = data.get("parameters")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(name, str) or not name or not isinstance(arguments, dict):
+        return None
+    return name, arguments
+
+
 class LLMGatewayService:
     def __init__(
         self,
@@ -274,16 +348,169 @@ class LLMGatewayService:
         self._save_session()
         await self._converse()
 
-    async def _auto_save_script(self, user_request: str, assistant_content: str, tool_calls: list[dict[str, Any]]) -> None:
-        """Fallback: salva automaticamente uno script anche se il modello non usa file_write.
+    _INSTALLER_LINE_RE = re.compile(
+        r"^\s*(?:sudo\s+)?(?:pip3?\s+install|python3?\s+-m\s+pip\s+install|"
+        r"npm\s+install|npm\s+i\b|yarn\s+add|apt(?:-get)?\s+install|"
+        r"brew\s+install|conda\s+install|cargo\s+install)\b",
+        re.IGNORECASE,
+    )
 
-        Il percorso resta confinato alla working directory e viene creato solo quando
-        la richiesta e' chiaramente di creazione/salvataggio di uno script e la risposta
-        contiene un blocco di codice. Se il modello ha gia' chiamato file_write non duplica
-        il file.
+    _LANG_EXTENSIONS = {
+        "python": "py", "py": "py", "bash": "sh", "sh": "sh", "shell": "sh",
+        "javascript": "js", "js": "js", "typescript": "ts", "ts": "ts",
+        "json": "json", "yaml": "yml", "yml": "yml", "text": "txt", "txt": "txt",
+    }
+
+    # Parole note associate a mini-giochi/script comuni, usate per dare un
+    # nome di file sensato (es. "tetris.py") quando l'utente non lo indica
+    # esplicitamente ma lo nomina nella richiesta ("fammi un giochino come tetris").
+    _KNOWN_NAME_HINTS = (
+        "tetris", "snake", "pong", "pacman", "breakout", "flappy",
+        "minesweeper", "sudoku", "2048", "dama", "scacchi", "chess",
+    )
+
+    @classmethod
+    def _is_installer_only_block(cls, content: str) -> bool:
+        """Un blocco e' 'solo installazione' se ogni riga non vuota e' un
+        comando di package manager (pip/npm/apt/...): non e' codice reale,
+        e' testo che il modello ha messo tra i fence solo per formattarlo,
+        e non deve mai essere scambiato per lo script vero."""
+        lines = [ln for ln in content.splitlines() if ln.strip()]
+        if not lines:
+            return True
+        return all(cls._INSTALLER_LINE_RE.match(ln) for ln in lines)
+
+    @classmethod
+    def _pick_code_block(cls, assistant_content: str) -> tuple[str, str] | None:
+        """Sceglie il blocco di codice piu' probabile tra tutti i fence nella
+        risposta. Il modello spesso apre la risposta con un fence di sole
+        istruzioni di installazione (es. 'pip install pygame') seguito dal
+        fence con il codice vero: prendere semplicemente il primo match e'
+        il bug che salvava 'pip install pygame' al posto del gioco. Si
+        scartano i blocchi 'solo installer' e si sceglie tra i restanti
+        quello piu' lungo (il codice vero e' quasi sempre il blocco piu'
+        corposo della risposta)."""
+        blocks = re.findall(r"```([A-Za-z0-9_+-]*)\s*\n?(.*?)```", assistant_content, re.DOTALL)
+        if not blocks:
+            return None
+        candidates = [
+            (lang.strip().lower(), content.strip("\n"))
+            for lang, content in blocks
+            if content.strip()
+        ]
+        if not candidates:
+            return None
+        real_code = [c for c in candidates if not cls._is_installer_only_block(c[1])]
+        pool = real_code or candidates
+        return max(pool, key=lambda c: len(c[1]))
+
+    @classmethod
+    def _guess_extension(cls, lang: str, content: str) -> str:
+        if lang in cls._LANG_EXTENSIONS:
+            return cls._LANG_EXTENSIONS[lang]
+        lowered = content.lower()
+        if "import pygame" in lowered or re.search(r"^\s*def \w+\(", content, re.MULTILINE):
+            return "py"
+        if lowered.startswith("#!/bin/bash") or lowered.startswith("#!/usr/bin/env bash"):
+            return "sh"
+        if "function " in lowered and "{" in content:
+            return "js"
+        return "txt"
+
+    @classmethod
+    def _guess_filename_slug(cls, user_request: str) -> str:
+        request = user_request.lower()
+        for hint in cls._KNOWN_NAME_HINTS:
+            if hint in request:
+                return hint
+        return "script"
+
+    @classmethod
+    def _normalize_file_write_arguments(cls, arguments: dict[str, Any]) -> dict[str, Any] | None:
+        """Il tool file_write si aspetta {"args": [path, content, append?]},
+        ma una tool call impersonata a testo spesso usa chiavi piu' 'naturali'
+        come path/content (o filename/text). Qui si accettano entrambe le
+        forme. Se 'content' contiene ancora un fence di codice (perche' il
+        modello ha infilato anche prosa/spiegazione nel valore), si estrae
+        solo il blocco di codice migliore invece di scrivere tutto alla
+        lettera nel file."""
+        if isinstance(arguments.get("args"), list):
+            return arguments
+
+        path = arguments.get("path") or arguments.get("filename") or arguments.get("file")
+        content = arguments.get("content") or arguments.get("text") or arguments.get("data")
+        if not isinstance(path, str) or not path or not isinstance(content, str):
+            return None
+
+        picked = cls._pick_code_block(content)
+        clean_content = picked[1] if picked is not None else content.strip()
+        args_list = [path, clean_content]
+        if arguments.get("append"):
+            args_list.append("true")
+        return {"args": args_list}
+
+    async def _maybe_dispatch_pseudo_tool_call(self, assistant_content: str) -> bool:
+        """Intercetta ed esegue davvero le tool call che il modello ha scritto
+        come testo JSON in chat invece di usare il campo tool_calls nativo di
+        Ollama (fallimento comune sui modelli piccoli in fallback locale).
+
+        Il beneficio principale rispetto a lasciarle come testo o passarle a
+        _auto_save_script e' che qui il blob viene decodificato con un vero
+        json.loads: le sequenze '\\n' nella stringa tornano newline reali
+        invece di restare due caratteri letterali nel file scritto su disco,
+        che e' esattamente il modo in cui prima si generavano script/tetris.py
+        corrotti (tutto su una riga, con backslash-n visibili col cat)."""
+        data = _extract_json_object(assistant_content)
+        if data is None:
+            return False
+        parsed = _pseudo_tool_call_name_and_args(data)
+        if parsed is None:
+            return False
+        name, arguments = parsed
+
+        registry = build_default_registry()
+        if name not in registry.names():
+            return False
+
+        if name == "file_write":
+            normalized = self._normalize_file_write_arguments(arguments)
+            if normalized is None:
+                return False
+            arguments = normalized
+
+        output, is_error = await registry.dispatch(name, arguments)
+        await self._bus.publish(
+            ToolResultEvent(
+                call_id=str(uuid.uuid4()),
+                tool_name=name,
+                result_output=output,
+                is_error=is_error,
+            )
+        )
+        await self._bus.publish(
+            StatusEvent(
+                text=f"Tool call scritta come testo dal modello, eseguita comunque: {name}",
+                level="error" if is_error else "info",
+            )
+        )
+        return True
+
+    async def _auto_save_script(self, user_request: str, assistant_content: str, tool_calls: list[dict[str, Any]]) -> None:
+        """Fallback: salva automaticamente uno script/gioco anche se il modello
+        non usa file_write.
+
+        Il percorso resta confinato alla working directory e viene creato solo
+        quando la richiesta e' chiaramente di creazione/salvataggio e la
+        risposta contiene un blocco di codice. Se il modello ha gia' chiamato
+        file_write non duplica il file. Sceglie il blocco di codice migliore
+        (non il primo) per evitare di salvare un fence di sole istruzioni di
+        installazione al posto del programma vero.
         """
         request = user_request.lower()
-        script_words = ("script", "file", "salva", "salvare", "crea", "creare", "scrivi", "scrivere", "fammi")
+        script_words = (
+            "script", "file", "salva", "salvare", "crea", "creare", "scrivi",
+            "scrivere", "fammi", "gioco", "giochino", "game", "programma",
+        )
         if not any(word in request for word in script_words):
             return
         if any(
@@ -293,21 +520,35 @@ class LLMGatewayService:
             for call in tool_calls
         ):
             return
-        match = re.search(r"```(?:python|py|bash|sh|shell|javascript|js|typescript|ts|json|yaml|yml|text|txt)?\s*\n?(.*?)```", assistant_content, re.IGNORECASE | re.DOTALL)
-        if not match:
+
+        picked = self._pick_code_block(assistant_content)
+        if picked is None:
             return
-        content = match.group(1).strip("\n")
+        lang, content = picked
         if not content:
             return
-        filename_match = re.search(r"(?:^|\s)([A-Za-z0-9_.-]+\.(?:py|sh|bash|js|ts|json|yaml|yml|txt|md))\b", user_request, re.IGNORECASE)
+
+        filename_match = re.search(
+            r"(?:^|\s)([A-Za-z0-9_.-]+\.(?:py|sh|bash|js|ts|json|yaml|yml|txt|md))\b",
+            user_request,
+            re.IGNORECASE,
+        )
         if filename_match:
             filename = filename_match.group(1)
         else:
-            lang_match = re.search(r"```([A-Za-z0-9_+-]+)", assistant_content)
-            lang = (lang_match.group(1).lower() if lang_match else "")
-            extensions = {"python": "py", "py": "py", "bash": "sh", "sh": "sh", "shell": "sh", "javascript": "js", "js": "js", "typescript": "ts", "ts": "ts", "json": "json", "yaml": "yml", "yml": "yml", "text": "txt", "txt": "txt"}
-            filename = f"script.{extensions.get(lang, 'txt')}"
+            ext = self._guess_extension(lang, content)
+            slug = self._guess_filename_slug(user_request)
+            filename = f"{slug}.{ext}"
+
         output, is_error = await write_file({"args": [filename, content]})
+        await self._bus.publish(
+            ToolResultEvent(
+                call_id=str(uuid.uuid4()),
+                tool_name="file_write",
+                result_output=output,
+                is_error=is_error,
+            )
+        )
         if not is_error:
             await self._bus.publish(StatusEvent(text=f"Script creato automaticamente: {filename}", level="info"))
         else:
@@ -359,7 +600,9 @@ class LLMGatewayService:
                     (m.get("content", "") for m in reversed(self.history) if m.get("role") == "user"),
                     "",
                 )
-                await self._auto_save_script(user_request, assistant_content, tool_calls)
+                handled = await self._maybe_dispatch_pseudo_tool_call(assistant_content)
+                if not handled:
+                    await self._auto_save_script(user_request, assistant_content, tool_calls)
                 self.history.append({"role": "assistant", "content": assistant_content})
                 self._save_session()
                 return
