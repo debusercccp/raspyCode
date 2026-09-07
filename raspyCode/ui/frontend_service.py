@@ -197,6 +197,12 @@ class RaspyCodeApp(App):
         # Deve esistere già al mount: Textual può chiamare _refresh_model_list
         # immediatamente, prima che arrivino i primi ModelListEvent.
         self._models: list[str] = []
+        # Ultima risposta testuale completa del modello, usata da
+        # Ctrl+Shift+C. Deve esistere fin dall'inizio: prima di questo fix
+        # mancava del tutto e action_copy_last_response falliva con un
+        # AttributeError silenziosamente inghiottito da contextlib.suppress,
+        # quindi la scorciatoia sembrava "non fare nulla".
+        self._last_response: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -257,7 +263,7 @@ class RaspyCodeApp(App):
         )
         return (
             f" WD: [bold]{WORKING_DIRECTORY}[/]  ·  HW: {self.hw_mode}  ·  {pi_status} ({self.pi_ip})  ·  "
-            f"Modello: {model_status}  ·  Ctrl+S impostazioni  ·  Ctrl+Q esci"
+            f"Modello: {model_status}  ·  Ctrl+S impostazioni  ·  /save salva risposta  ·  Ctrl+Q esci"
         )
 
     def _render_created_file(self, result: str) -> Markdown | None:
@@ -364,6 +370,12 @@ class RaspyCodeApp(App):
         if text in {"/quit", "/exit"}:
             self.action_quit_app()
             return
+        if text.lower() in {"/copy", "/copia"}:
+            self.action_copy_last_response()
+            return
+        if text.lower() in {"/save", "/salva"}:
+            self.action_save_last_response()
+            return
 
         # 1. FORZIAMO LA SCOMPARSA DEL BANNER E LA COMPARSA DEL LOG
         try:
@@ -389,11 +401,54 @@ class RaspyCodeApp(App):
         self.push_screen(SettingsScreen(self.pi_ip, self.current_model, self.available_models))
 
     def action_copy_last_response(self) -> None:
+        """Copia l'ultima risposta negli appunti via OSC52 (Ctrl+Shift+C o
+        comando /copy). Molti terminali (kitty, foot, alacritty, ecc. - tipici
+        su setup Wayland come niri) intercettano Ctrl+Shift+C a livello di
+        emulatore per la propria funzione 'copia selezione' e non lo inoltrano
+        mai all'applicazione: in quel caso questa action non viene proprio
+        chiamata, ed e' per questo che il tasto puo' sembrare "non fare
+        nulla" anche dopo aver risolto il bug di inizializzazione. Il comando
+        testuale /copy scritto nella barra di input bypassa il problema
+        perche' non dipende da nessuna scorciatoia di tastiera. Se anche
+        cosi' il clipboard non funziona (terminale senza supporto OSC52,
+        sessione remota senza passthrough), usare /save per scrivere la
+        risposta su file invece che negli appunti."""
+        log = self.query_one("#chat-log", RichLog)
         if not self._last_response:
+            log.write("[yellow]Nessuna risposta da copiare ancora.[/]")
             return
-        with contextlib.suppress(Exception):
+        try:
             self.copy_to_clipboard(self._last_response)
-            self.query_one("#chat-log", RichLog).write("[green]Risposta copiata negli appunti.[/]")
+            log.write(
+                "[green]Risposta copiata negli appunti.[/] Se non compare da "
+                "nessuna parte incollandola, il terminale probabilmente non "
+                "supporta OSC52: usa [cyan]/save[/] per scriverla su file."
+            )
+        except Exception as exc:
+            # Prima non veniva mai segnalato un fallimento (contextlib.suppress
+            # ingoiava tutto): il tasto sembrava "non fare nulla" quando il
+            # terminale non supporta OSC52 o il clipboard non è disponibile.
+            log.write(
+                f"[bold red]Copia negli appunti non riuscita ({exc}).[/] "
+                "Usa [cyan]/save[/] per scrivere la risposta su file invece."
+            )
+
+    def action_save_last_response(self) -> None:
+        """Scrive l'ultima risposta su file nel workspace invece che negli
+        appunti: a differenza del clipboard (OSC52, spesso non supportato o
+        intercettato dal terminale) scrivere su disco funziona sempre,
+        indipendentemente da emulatore di terminale o sessione remota."""
+        log = self.query_one("#chat-log", RichLog)
+        if not self._last_response:
+            log.write("[yellow]Nessuna risposta da salvare ancora.[/]")
+            return
+        path = WORKING_DIRECTORY / "ultima_risposta.txt"
+        try:
+            path.write_text(self._last_response, encoding="utf-8")
+        except OSError as exc:
+            log.write(f"[bold red]Impossibile scrivere {path}: {exc}[/]")
+            return
+        log.write(f"[green]Risposta salvata in:[/] {path}")
 
     def action_quit_app(self) -> None:
         self.exit()
